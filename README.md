@@ -10,6 +10,7 @@ CodeBuddy Skills 集合 · A collection of CodeBuddy skills.
 |---|---|---|
 | [dotnet-desktop-delivery](dotnet-desktop-delivery/) | 简体中文 | .NET 桌面应用交付实践：根目录双脚本、打包流水线（Inno Setup + 微软商店 MSIX）、测试分层、多语言 |
 | [dotnet-desktop-delivery-en](dotnet-desktop-delivery-en/) | English | .NET desktop app delivery practices: dual root scripts, packaging pipeline (Inno Setup + Microsoft Store MSIX), test layering, localization |
+| [git-proxy](git-proxy/) | 简体中文 | git 网络操作前的连通性探测：先测直连，不通则依次尝试 v2rayN / Clash 本地代理，用真正能通的代理（附带只读探测脚本，不改动 git 配置） |
 
 ## 安装 / Install
 
