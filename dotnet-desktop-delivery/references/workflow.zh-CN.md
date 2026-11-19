@@ -1,46 +1,41 @@
----
-name: dotnet-desktop-delivery-en
-description: Engineering delivery practices for .NET desktop applications (Avalonia / WPF / WinForms) - the project-root "run script + pack script" convention, a multi-stage release pipeline (Inno Setup installer and Microsoft Store MSIX produced in one run), unit/integration test layering, and a 20+ language localization scheme kept in sync with the installer. This skill should be used when setting up, reviewing, or refactoring packaging and release automation, test project structure, or localization for a .NET desktop application. English version; a Simplified Chinese version ships as "dotnet-desktop-delivery".
----
+# .NET 桌面应用交付实践
 
-# .NET Desktop Application Delivery Practices
+面向 **.NET 桌面应用** 的打包、测试、多语言三块工程化实践。所有模板均已参数化，替换占位符即可套用到新项目。
 
-Packaging, testing, and localization practices for **.NET desktop applications**. Every template is parameterized - replace the placeholders and apply them to a new project.
+## 技术栈选型
 
-## Technology Selection
+**优先选用 .NET 10 + Avalonia。** 已验证的两个核心收益：
 
-**Prefer .NET 10 + Avalonia.** Two verified core benefits:
-
-| Benefit | Details |
+| 收益 | 说明 |
 |---|---|
-| **Cross-platform** | Ship one codebase to Windows / macOS / Linux by switching the RuntimeIdentifier (`win-x64` / `osx-arm64` / `linux-x64`) |
-| **Headless end-to-end testing** | `Avalonia.Headless` runs real UI tests on environments without a display (CI / servers) - no RDP, no interactive desktop session required |
+| **跨平台** | 一套代码发布 Windows / macOS / Linux，只需切换 RuntimeIdentifier（`win-x64` / `osx-arm64` / `linux-x64`） |
+| **Headless 端到端测试** | `Avalonia.Headless` 可在无显示器的环境（CI / 服务器）直接跑真实 UI 测试，无需 RDP、无需交互式桌面会话 |
 
-> The patterns in this skill apply equally to WPF and WinForms. Differences are flagged as "WPF note" in each section. The reference implementation comes from a production .NET 8 + WPF project (PersonalNavigator); source files and line numbers are cited so claims can be verified.
+> 本 skill 的模式同样适用于 WPF 与 WinForms。差异点已在各章节用「WPF 注意」标注。参考实现来自一个 .NET 8 + WPF 的生产项目（PersonalNavigator），文中标注了具体文件与行号以便回溯。
 
 ---
 
-## 1. Project-Root Dual-Script Convention
+## 一、项目根目录双脚本约定
 
-Every project root carries exactly two scripts, each with a single responsibility and a uniform name:
+每个项目根目录固定放两个脚本，职责单一、命名统一：
 
-| Script | Responsibility |
+| 脚本 | 职责 |
 |---|---|
-| `Run Project.vbs` | **Run** the current project directly (double-click to use) |
-| `Pack.bat` | **Build the installer** (delegates to `Pack.ps1`) |
+| `Run Project.vbs` | **直接运行**当前项目（双击即用） |
+| `Pack.bat` | **生成安装包**（转调 `Pack.ps1`） |
 
-### 1.1 Why the run script is VBS instead of .bat
+### 1.1 运行脚本为什么用 VBS 而不是 .bat
 
-Launching a desktop app from `.bat` or `dotnet run` flashes a **black console window**. Root cause:
+用 `.bat` 或 `dotnet run` 启动桌面程序时，会闪出一个**黑色控制台窗口**。根因：
 
-- `.bat` is hosted by `cmd.exe`, so a console window always exists
-- `dotnet run` is hosted by the `dotnet` host, which also attaches a console
+- `.bat` 本身由 `cmd.exe` 承载，控制台窗口必然存在
+- `dotnet run` 由 `dotnet` 宿主承载，同样附加控制台
 
-**VBS is hosted by `WScript`, which carries no console**, so launching a WinExe shows only the application UI. This is the cleanest way to eliminate the black window - no setting beyond `OutputType` needs to change.
+**VBS 由 `WScript` 承载，本身不带控制台**，启动 WinExe 时只显示程序 UI。这是消除黑窗最干净的办法，无需改 `OutputType` 之外的任何设置。
 
-> Prerequisite: the main project's `OutputType` must be `WinExe` (WPF default; Avalonia templates also default to `WinExe`, just confirm `<OutputType>WinExe</OutputType>`).
+> 前提：主工程 `OutputType` 为 `WinExe`（WPF 默认；Avalonia 模板同样默认 `WinExe`，确认 `<OutputType>WinExe</OutputType>` 即可）。
 
-Template (the CONFIG block at the top has three constants; edit those three lines for a new project):
+模板（顶部 CONFIG 块三个常量，新项目改这三行即可）：
 
 ```vbs
 ' Run Project.vbs - launches the current project without a console window.
@@ -102,14 +97,14 @@ Function Quote(value)
 End Function
 ```
 
-Design points:
-- The `--check` parameter lets pack scripts probe whether the project is runnable without actually launching the app
-- Prefer Release, then Debug; only build when neither exists - avoid waiting for a compile on every double-click
-- Surface build failures with a `MsgBox` instead of exiting silently
+设计要点：
+- `--check` 参数供打包脚本探测项目可运行性，不真正启动程序
+- 优先 Release，其次 Debug，都没有才自动构建——避免每次双击都等待编译
+- 构建失败用 `MsgBox` 明确提示，而不是静默退出
 
-### 1.2 Layered pack script: bat is only a shell, logic lives in ps1
+### 1.2 打包脚本分层：bat 只做壳，逻辑在 ps1
 
-`.bat` does exactly three things: switch to the UTF-8 code page, check that `dotnet` exists, and delegate to PowerShell passing arguments through. The actual pipeline lives in `.ps1` (easier to maintain, supports parameter validation and structured error handling).
+`.bat` 只负责三件事：切 UTF-8 代码页、检测 `dotnet` 是否存在、转调 PowerShell 并透传参数。真正的流水线写在 `.ps1` 里（易于维护、支持参数校验与结构化错误处理）。
 
 ```bat
 @echo off
@@ -156,36 +151,36 @@ pause
 
 ---
 
-## 2. The Packaging Pipeline
+## 二、打包流水线
 
-A single entry point, `Pack.ps1`, selects the output via `-Target`:
+单一入口 `Pack.ps1`，通过 `-Target` 选择产物：
 
-| `-Target` | Output |
+| `-Target` | 产物 |
 |---|---|
-| `Installer` (default) | Inno Setup installer |
-| `MicrosoftStore` | Microsoft Store `.msixupload` |
-| `Both` | **Installer first, then the Store package** |
+| `Installer`（默认） | Inno Setup 安装包 |
+| `MicrosoftStore` | 微软商店 `.msixupload` |
+| `Both` | **先出安装包，再出商店包** |
 
-Full stage list (for `Both`, 12 stages; `Installer` has 11):
+完整阶段（以 `Both` 为例，共 12 阶段；`Installer` 为 11 阶段）：
 
-| # | Stage | Fail-fast gate |
+| # | 阶段 | 失败即中断 |
 |---|---|---|
 | 1 | restore + build Release | ✅ |
-| 2 | **Unit tests** | ✅ |
-| 3 | **Integration tests** | ✅ |
-| 4 | Increment version + self-contained publish | ✅ |
-| 5 | Obfuscate (ConfuserEx); require the SHA256 to change | ✅ |
-| 6 | Post-obfuscation smoke test + clean generated logs | ✅ |
-| 7 | Authenticode signing (exe / dll) | Degrades to an `-unsigned` package without a cert |
-| 8 | Compile the Inno Setup installer | ✅ |
-| 9 | Sign the installer | ✅ |
-| 10 | Silent install - smoke test - uninstall (`-RunInstallerTest`) | Optional |
-| 11 | **Microsoft Store MSIX package** (only `Both`) | Required with `-RequireStore`, otherwise degrades to skip |
-| 12 | Artifacts ready; print version / path / signing status | — |
+| 2 | **单元测试** | ✅ |
+| 3 | **集成测试** | ✅ |
+| 4 | 版本号自增 + self-contained publish | ✅ |
+| 5 | 代码混淆（ConfuserEx），校验前后 SHA256 必须不同 | ✅ |
+| 6 | 混淆后冒烟测试 + 清理生成日志 | ✅ |
+| 7 | Authenticode 签名（exe / dll） | 无证书则降级为 `-unsigned` 包 |
+| 8 | Inno Setup 编译安装包 | ✅ |
+| 9 | 给安装包签名 | ✅ |
+| 10 | 静默安装→冒烟→卸载（`-RunInstallerTest`） | 可选 |
+| 11 | **微软商店 MSIX 包**（仅 `Both`） | `-RequireStore` 时必需，否则降级跳过 |
+| 12 | 产物就绪，打印版本/路径/签名状态 | — |
 
-### 2.1 Centralized version management
+### 2.1 版本集中管理
 
-Maintain the version in a single `Version.props`; the script reads and increments the patch number with regex. **Do not** scatter version numbers across csproj files and scripts.
+用独立的 `Version.props` 单点维护版本，脚本正则读写并自增补丁号。**不要**把版本号散落在 csproj 与脚本里。
 
 ```xml
 <Project>
@@ -217,12 +212,12 @@ function Increment-AppPatchVersion {
 }
 ```
 
-### 2.2 Safety guardrails (mandatory around every deletion)
+### 2.2 安全护栏（删除操作务必加）
 
-Pack scripts clean staging directories with `Remove-Item -Recurse -Force`. If a path variable is ever mistyped, the result is catastrophic. Three layers of protection:
+打包脚本会 `Remove-Item -Recurse -Force` 清理暂存目录。一旦路径变量被写错，后果是灾难性的。三层防护：
 
 ```powershell
-# 1) Force every staging directory to live under <ProjectRoot>\build\
+# 1) 强制所有暂存目录必须位于 <ProjectRoot>\build\ 之下
 function Assert-SafeStagePath {
     param([Parameter(Mandatory)] [string]$Path)
     $resolvedRoot = $ProjectRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
@@ -235,7 +230,7 @@ function Assert-SafeStagePath {
     return $resolvedPath
 }
 
-# 2) Refuse to delete any tree containing a reparse point (symlink / mount / junction)
+# 2) 拒绝删除包含 reparse point（符号链接 / 挂载点 / Junction）的目录树
 function Reset-StageDirectory {
     param([Parameter(Mandatory)] [string]$Path)
     $safePath = Assert-SafeStagePath $Path
@@ -263,7 +258,7 @@ function Reset-StageDirectory {
 }
 ```
 
-Third layer: **resolve external tool paths first**, before any cleanup or version increment. Otherwise, when Inno Setup is missing, the version has already been bumped and the source modified before the run fails halfway through.
+第三层：**外部工具路径在最前面解析**，早于任何清理与版本号自增。否则 Inno Setup 没装时，版本号已经被推进、源码已被改动，却在中途失败。
 
 ```powershell
 # Resolve the Inno Setup compiler before any staging cleanup or version
@@ -271,11 +266,11 @@ Third layer: **resolve external tool paths first**, before any cleanup or versio
 $innoCompiler = Find-InnoCompiler
 ```
 
-### 2.3 Smoke test: app side + script side
+### 2.3 冒烟测试：应用侧 + 脚本侧配合
 
-Verify "the app starts, the main window constructs, resource dictionaries load" without **polluting real user data**.
+验证「程序能启动、能构造主窗口、资源字典能加载」，且**不污染真实用户数据**。
 
-**App side**: recognize the `--smoke-test` argument, run a windowless verification path, and exit with a code.
+**应用侧**：识别 `--smoke-test` 参数，走无窗口验证路径并以退出码结束。
 
 ```csharp
 protected override async void OnStartup(StartupEventArgs e)
@@ -289,21 +284,21 @@ protected override async void OnStartup(StartupEventArgs e)
         Shutdown(exitCode);
         return;
     }
-    // ... normal startup
+    // ... 正常启动
 }
 
 private static int RunReleaseSmokeTest()
 {
     LanguageManager.LoadLanguage("en-US");
-    var window = new MainWindow(initializeTrayIcon: false);  // skip the tray icon to avoid side effects
-    window.Measure(new Size(1300, 750));                     // force layout to prove the XAML loads
-    // ... assertions as needed, return 0 / non-zero
+    var window = new MainWindow(initializeTrayIcon: false);  // 不初始化托盘，避免副作用
+    window.Measure(new Size(1300, 750));                     // 触发布局，验证 XAML 可加载
+    // ... 必要的断言，返回 0 / 非 0
 }
 ```
 
-> Key: give the main window constructor a switch that skips side effects such as the tray icon, otherwise the smoke test leaves a tray process behind in CI.
+> 关键：给主窗口构造函数留一个跳过托盘图标等副作用的开关，否则冒烟测试会在 CI 里残留托盘进程。
 
-**Script side**: redirect `APPDATA` / `LOCALAPPDATA` to an isolated temporary profile and set a timeout.
+**脚本侧**：把 `APPDATA` / `LOCALAPPDATA` 重定向到隔离的临时 profile，并设超时。
 
 ```powershell
 function Invoke-SmokeTest {
@@ -333,9 +328,9 @@ function Invoke-SmokeTest {
 }
 ```
 
-### 2.4 Obfuscation and signing
+### 2.4 混淆与签名
 
-**Obfuscation**: assert that the output actually changed, otherwise you "think it is protected but it is not".
+**混淆**：必须校验产物确实被改写，否则「以为加了壳其实没加」。
 
 ```powershell
 $releaseHash   = (Get-FileHash -LiteralPath (Join-Path $ReleaseDir "MyApp.dll") -Algorithm SHA256).Hash
@@ -343,7 +338,7 @@ $protectedHash = (Get-FileHash -LiteralPath $confuserOutputAssembly -Algorithm S
 if ($releaseHash -eq $protectedHash) { throw "ConfuserEx output is identical to the unprotected assembly." }
 ```
 
-**Signing**: add a timestamp and verify immediately after signing.
+**签名**：加时间戳，并签名后立即验证。
 
 ```powershell
 function Sign-And-Verify {
@@ -356,23 +351,23 @@ function Sign-And-Verify {
 }
 ```
 
-**Degradation strategy**: without a certificate, do not break development - produce a test package with an `-unsigned` suffix and flag it prominently in the log; only an explicit `-RequireSigning` makes it a hard failure.
+**降级策略**：没有证书时不要中断研发，产出带 `-unsigned` 后缀的测试包并在日志中显著标注；只有显式 `-RequireSigning` 才硬失败。
 
-### 2.5 Produce both package types in one run
+### 2.5 一次产出两类包
 
 ```powershell
 param(
     [ValidateSet("Installer", "MicrosoftStore", "Both")]
     [string]$Target = "Installer",
     # ...
-    [switch]$RequireStore,   # hard-fail instead of skipping when Store prerequisites are missing
+    [switch]$RequireStore,   # Store 前置条件缺失时改为硬失败，而非跳过
     # ...
 )
 
 # "Both" appends a Microsoft Store upload stage after the installer pipeline.
 $totalStages = if ($Target -eq "Both") { 12 } else { 11 }
 
-# ... installer stages 1-10 ...
+# ... 安装包阶段 1-10 ...
 
 if ($Target -eq "Both") {
     Write-Host "[11/$totalStages] Microsoft Store upload package" -ForegroundColor Yellow
@@ -382,7 +377,7 @@ if ($Target -eq "Both") {
 Write-Host "[$totalStages/$totalStages] Release artifact ready" -ForegroundColor Green
 ```
 
-In `Both` mode, Store prerequisites (environment variables / wapproj / msbuild) **degrade to a warning and skip**; only `-RequireStore` or `-Target MicrosoftStore` throws - local development is never blocked by CI-only environment variables.
+商店打包的前置条件（环境变量 / wapproj / msbuild）在 `Both` 模式下**降级为警告并跳过**，只有 `-RequireStore` 或 `-Target MicrosoftStore` 时才抛错——本地开发不会被 CI 专用的环境变量卡住。
 
 ```powershell
 function Test-StorePrerequisite {
@@ -395,11 +390,11 @@ function Test-StorePrerequisite {
 
 ---
 
-## 3. Inno Setup Installer
+## 三、Inno Setup 安装包
 
-### 3.1 setup.iss skeleton
+### 3.1 setup.iss 骨架
 
-Use `#ifndef` to give every externally injected variable a default, so the script works both overridden from the command line (`/d`) and when compiled by double-click.
+用 `#ifndef` 给每个外部注入的变量提供默认值，使脚本既能被命令行 `/d` 覆盖，也能独立双击编译。
 
 ```iss
 #define MyAppName "MyApp"
@@ -452,12 +447,12 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 Filename: "{cmd}"; Parameters: "/c ""taskkill /f /im {#MyAppExeName}"""; Flags: runhidden; RunOnceId: "TerminateMyApp"
 ```
 
-Key points:
-- `AppId` is a fixed GUID; **upgrades identify the same app through it**; never change it between versions
-- `taskkill` in `[UninstallRun]` guarantees the running process is killed before uninstall, otherwise file locks leave uninstall residue
-- `Compression=lzma2/max` + `SolidCompression=yes` shrink the package noticeably
+要点：
+- `AppId` 用固定 GUID，**升级安装靠它识别同一应用**；勿随版本变动
+- `[UninstallRun]` 里 `taskkill` 确保卸载时能杀掉仍在运行的进程，否则文件占用导致卸载残留
+- `Compression=lzma2/max` + `SolidCompression=yes` 显著减小体积
 
-### 3.2 Command-line compilation
+### 3.2 命令行编译
 
 ```powershell
 Invoke-NativeCommand $innoCompiler @(
@@ -469,46 +464,46 @@ Invoke-NativeCommand $innoCompiler @(
 ) "Installer compilation failed"
 ```
 
-### 3.3 Installer localization
+### 3.3 安装包多语言
 
-The languages declared in the `[Languages]` section **map one-to-one with the in-app languages**, and each language binds its own license file.
+`[Languages]` 段声明的语言与**应用内语言一一对应**，并为每种语言绑定对应许可证文件。
 
 ```iss
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"; LicenseFile: "Installer\Licenses\LICENSE.en-US.txt"
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "Installer\Licenses\LICENSE.zh-CN.txt"
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "Installer\Licenses\LICENSE.ja.txt"
-; Languages Inno Setup does not ship: Default.isl fallback + custom .isl override
+; Inno Setup 未内置的语言：用 Default.isl 兜底 + 自定义 .isl 覆盖
 Name: "hindi"; MessagesFile: "compiler:Default.isl,Installer\Languages\Hindi.isl"; LicenseFile: "Installer\Licenses\LICENSE.hi.txt"
 ```
 
-- Languages **shipped** with Inno Setup: `compiler:Languages\Xxx.isl`
-- Languages **not shipped**: combined form `compiler:Default.isl,Installer\Languages\Xxx.isl` (the former provides English fallback for untranslated entries, the latter provides the translated part)
+- Inno Setup **内置**的语言：`compiler:Languages\Xxx.isl`
+- **未内置**的语言：组合写法 `compiler:Default.isl,Installer\Languages\Xxx.isl`（前者提供未翻译条目的英文兜底，后者提供已翻译部分）
 
-Directory convention:
+目录约定：
 
 ```
 Installer/
-├── Languages/   custom .isl files (only for languages Inno Setup does not ship)
-└── Licenses/    LICENSE.{lang}.txt (one per language)
+├── Languages/   自定义 .isl（仅放 Inno Setup 未内置的语言）
+└── Licenses/    LICENSE.{lang}.txt（每种语言一份）
 ```
 
 ---
 
-## 4. Microsoft Store MSIX Publishing
+## 四、微软商店 MSIX 上架
 
-### 4.1 Directory structure
+### 4.1 目录结构
 
 ```
 StorePackaging/
 ├── PersonalNavigator.Store.wapproj        # Windows Application Packaging Project
-├── Package.appxmanifest.template          # placeholder template (committed)
-└── Package.appxmanifest                   # generated output (not committed, add to .gitignore)
+├── Package.appxmanifest.template          # 占位符模板（入库）
+└── Package.appxmanifest                   # 生成物（不入库，加入 .gitignore）
 ```
 
-### 4.2 Manifest template
+### 4.2 清单模板
 
-`Package.appxmanifest.template` replaces sensitive / volatile identifiers with placeholders:
+`Package.appxmanifest.template` 用占位符替换敏感/易变标识：
 
 ```xml
 <Identity Name="__STORE_IDENTITY_NAME__"
@@ -520,23 +515,23 @@ StorePackaging/
 </Properties>
 ```
 
-### 4.3 Packaging flow
+### 4.3 打包流程
 
 ```powershell
 function Invoke-MicrosoftStorePackaging {
     param([switch]$Required)
 
-    # 1) Three Partner Center identifiers injected via environment variables (CI Secrets)
+    # 1) 三个 Partner Center 标识，由环境变量注入（CI Secrets）
     $requiredNames = @(
         "MYAPP_STORE_IDENTITY_NAME",
         "MYAPP_STORE_PUBLISHER",
         "MYAPP_STORE_DISPLAY_NAME")
-    # ... collect; Test-StorePrerequisite decides throw or skip when missing ...
+    # ... 收集，缺失则 Test-StorePrerequisite 决定 throw 或 skip ...
 
-    # 2) Pad the version to four segments (MSIX requires x.y.z.w)
+    # 2) 版本号补成四段（MSIX 强制要求 x.y.z.w）
     $version = (Get-AppVersion) + ".0"
 
-    # 3) Replace placeholders, write UTF-8 without BOM
+    # 3) 占位符替换，UTF-8 无 BOM 写出
     $manifest = (Get-Content -LiteralPath $manifestTemplate -Raw).
         Replace("__STORE_IDENTITY_NAME__", $values["MYAPP_STORE_IDENTITY_NAME"]).
         Replace("__STORE_PUBLISHER__",     $values["MYAPP_STORE_PUBLISHER"]).
@@ -544,38 +539,38 @@ function Invoke-MicrosoftStorePackaging {
         Replace("__STORE_VERSION__", $version)
     [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false))
 
-    # 4) Publish the self-contained output first
+    # 4) 先 publish 自包含产物
     Invoke-NativeCommand "dotnet" @(
         "publish", $ProjectFile, "--configuration", $Configuration, "--runtime", $Runtime,
         "--self-contained", "true", "--no-restore", "--output", $storePublishDirectory
     ) "Self-contained Store publish failed"
 
-    # 5) Package with msbuild (wapproj is not supported by dotnet build)
+    # 5) 用 msbuild 打包（wapproj 不支持 dotnet build）
     Invoke-NativeCommand $msBuild.Source @(
         $storeProject, "/t:Rebuild", "/p:Configuration=$Configuration", "/p:Platform=x64",
         "/p:RuntimeIdentifier=$Runtime", "/p:SelfContained=true", "/p:AppxBundle=Never",
         "/p:UapAppxPackageBuildMode=StoreUpload", "/p:AppxPackageDir=$storeDirectory\"
     ) "Microsoft Store MSIX upload packaging failed"
 
-    # 6) Assert the artifact was actually produced
+    # 6) 校验产物确实生成
     $uploadPackage = Get-ChildItem -LiteralPath $storeDirectory -Filter "*.msixupload" -File -Recurse | Select-Object -First 1
     if ($null -eq $uploadPackage) { throw "MSIX upload package was not produced." }
 }
 ```
 
-Key points:
-- **Use `msbuild`, not `dotnet build`** - `wapproj` is a Windows Application Packaging Project and `dotnet build` does not support it
-- `UapAppxPackageBuildMode=StoreUpload` produces the **Store-upload-only** `.msixupload`
-- The MSIX version must be **four segments** (`1.1.10.0`) while the app version is usually three; append `.0`
-- Prerequisite: the Visual Studio **MSIX Packaging Tools** workload; the script should probe for `msbuild` first and give clear install guidance
+关键点：
+- **必须用 `msbuild` 而非 `dotnet build`**——`wapproj` 是 Windows Application Packaging Project，`dotnet build` 不支持
+- `UapAppxPackageBuildMode=StoreUpload` 产出**上架专用**的 `.msixupload`
+- MSIX 版本必须是**四段**（`1.1.10.0`），而应用版本通常三段，需补 `.0`
+- 前置依赖：Visual Studio 的 **MSIX Packaging Tools** 工作负载；脚本应先探测 `msbuild` 并给出明确安装指引
 
 ---
 
-## 5. Testing Strategy
+## 五、测试策略
 
-### 5.1 Project configuration
+### 5.1 工程配置
 
-Reference only what you need in the test project. **Do not pin specific versions** - use the latest stable version compatible with the project's target framework; if the project already references a version, follow it to avoid pulling in parallel versions that conflict.
+测试工程只引用必要依赖。**不锁定具体版本号**，使用与项目目标框架兼容的最新稳定版；若项目已引用某版本，优先跟随项目现有版本，避免并行引入多个版本造成冲突。
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -587,7 +582,7 @@ Reference only what you need in the test project. **Do not pin specific versions
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Use the latest stable; versions ride along with project upgrades, never hardcode -->
+    <!-- 使用最新稳定版；版本随项目升级，不写死 -->
     <PackageReference Include="MSTest" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
   </ItemGroup>
@@ -602,61 +597,61 @@ Reference only what you need in the test project. **Do not pin specific versions
 </Project>
 ```
 
-> If you must pin versions (for example, reproducible builds), centralize them in `Directory.Packages.props` instead of scattering them across csproj files.
+> 若需锁定版本（如可复现构建要求），用 `Directory.Packages.props` 集中管理，而不是散落在各 csproj。
 
-### 5.2 Organize test directories by layer
+### 5.2 目录按层组织
 
-Mirror the main project structure and give `Integration/` its own folder:
+测试目录镜像主工程结构，并**单独分出 `Integration/`**：
 
 ```
 MyApp.Tests/
-├── Controls/      # custom controls
-├── Converters/    # value converters
-├── Data/          # data access
-├── Integration/   # integration tests (dedicated folder, pairs with the filter split)
+├── Controls/      # 自定义控件
+├── Converters/    # 值转换器
+├── Data/          # 数据访问
+├── Integration/   # 集成测试（单独目录，配合 filter 分离）
 ├── Models/
-├── Performance/   # performance benchmarks
+├── Performance/   # 性能基准
 ├── Services/
 ├── ViewModels/
 └── Views/
 ```
 
-### 5.3 Unit / integration split (naming convention + filter)
+### 5.3 单元 / 集成分离（靠命名约定 + filter）
 
-No `[Category]` attributes needed - use a **namespace/class naming convention** with `dotnet test --filter`:
+不需要给测试打 `[Category]` 标签，用**命名空间/类名约定**配合 `dotnet test --filter` 即可：
 
 ```powershell
-# Unit tests: exclude Integration
+# 单元测试：排除 Integration
 Invoke-NativeCommand "dotnet" @(
     "test", $TestProject, "--configuration", $Configuration, "--no-build", "--no-restore",
     "--filter", "FullyQualifiedName!~Integration"
 ) "Unit tests failed"
 
-# Integration tests: Integration only
+# 集成测试：只要 Integration
 Invoke-NativeCommand "dotnet" @(
     "test", $TestProject, "--configuration", $Configuration, "--no-build", "--no-restore",
     "--filter", "FullyQualifiedName~Integration"
 ) "Integration tests failed"
 ```
 
-Splitting into two runs pays off because unit tests are fast and run frequently, while integration tests are slow and can be skipped selectively. Both are **mandatory gates in the packaging pipeline** (stages 2 and 3).
+分成两次跑的好处：单元测试快、可高频执行；集成测试慢、可选择性跳过。二者**都是打包流水线的必经门禁**（阶段 2、3）。
 
-### 5.4 Use InMemory for database tests
+### 5.4 数据库测试用 InMemory
 
-Data-access tests use `Microsoft.EntityFrameworkCore.InMemory` - no real database files, no cross-test pollution, and no writes into user data directories.
+数据访问相关测试使用 `Microsoft.EntityFrameworkCore.InMemory`，不碰真实数据库文件，避免测试间互相污染、也避免把测试写进用户数据目录。
 
-### 5.5 Avalonia Headless end-to-end testing (recommended)
+### 5.5 Avalonia Headless 端到端测试（推荐）
 
-This is the biggest engineering win of choosing Avalonia: **real UI tests without a display**, so CI no longer needs an interactive desktop session or RDP.
+这是选用 Avalonia 的最大工程收益：**无需显示器即可运行真实 UI 测试**，CI 里不再需要配置交互式桌面会话或 RDP。
 
-Packages:
+安装包：
 
 ```
-Avalonia.Headless.XUnit     (or Avalonia.Headless.NUnit)
-Avalonia.Themes.Fluent      (headless controls need a theme too)
+Avalonia.Headless.XUnit     （或 Avalonia.Headless.NUnit）
+Avalonia.Themes.Fluent      （无头控件同样需要主题）
 ```
 
-Configuration (once per test project):
+配置（每个测试工程一次）：
 
 ```csharp
 [assembly: AvaloniaTestApplication(typeof(TestAppBuilder))]
@@ -668,7 +663,7 @@ public class TestAppBuilder
 }
 ```
 
-Writing tests - use `[AvaloniaTest]` instead of `[Test]`; it runs the test on the UI thread:
+编写测试——用 `[AvaloniaTest]` 替代 `[Test]`，它负责在 UI 线程上执行：
 
 ```csharp
 [AvaloniaTest]
@@ -685,43 +680,43 @@ public void Should_Type_Text_Into_TextBox()
 }
 ```
 
-Isolation level (default `PerTest`; `PerAssembly` speeds up large suites):
+隔离级别（默认 `PerTest`，大套件可提速）：
 
 ```csharp
 [assembly: AvaloniaTestIsolation(AvaloniaTestIsolationLevel.PerAssembly)]
 ```
 
-| Level | Behavior |
+| 级别 | 行为 |
 |---|---|
-| `PerTest` (default) | Rebuilds the Application and Dispatcher per test; fully isolated |
-| `PerAssembly` | One Application shared by the whole assembly; faster but **shared state** - you must clean up global state yourself, and parallel execution is not supported |
+| `PerTest`（默认） | 每个测试重建 Application 与 Dispatcher，完全隔离 |
+| `PerAssembly` | 整个程序集复用一个 Application，更快但**共享状态**，需自行清理全局状态，且不支持并发执行 |
 
-Debugging tip: when you need to "see" headless tests, use `Avalonia.Headless.Vnc` to connect over VNC and watch the rendered output.
+调试技巧：需要"看见"无头测试时，使用 `Avalonia.Headless.Vnc` 通过 VNC 连接观察渲染结果。
 
-> **MSTest users**: `Avalonia.Headless.XUnit` / `.NUnit` are the official integrations for xUnit / NUnit. If your project is primarily MSTest, reference the core `Avalonia.Headless` package and start the headless AppBuilder yourself in `[TestInitialize]`, managing the Dispatcher. Recommendation: **keep unit tests on MSTest and run UI/end-to-end tests in a dedicated xUnit or NUnit project** - avoid re-inventing the wheel.
+> **MSTest 用户注意**：`Avalonia.Headless.XUnit` / `.NUnit` 是官方对 xUnit / NUnit 的集成。若项目主用 MSTest，可引用核心包 `Avalonia.Headless`，在 `[TestInitialize]` 中自行启动 headless AppBuilder 并管理 Dispatcher。建议：**单元测试沿用 MSTest，UI/端到端测试单独用 xUnit 或 NUnit 工程**，避免重复造轮子。
 
-> **WPF note**: WPF has no official headless support; UI tests usually need an STA thread plus a real desktop session (e.g., Appium + WinAppDriver). This is a practical reason to pick Avalonia for new projects.
+> **WPF 注意**：WPF 没有官方 headless 支持，UI 测试通常需要 STA 线程 + 真实桌面会话（如 Appium + WinAppDriver）。这也是推荐新项目选 Avalonia 的实操理由。
 
 ---
 
-## 6. Localization
+## 六、多语言方案
 
-### 6.1 Directory structure
+### 6.1 目录结构
 
-One XAML `ResourceDictionary` per language:
+每种语言一个 XAML `ResourceDictionary`：
 
 ```
 Resources/Languages/
-├── en-US.xaml     <- fallback baseline (largest, most complete)
+├── en-US.xaml     ← 回退基准（最多、最全）
 ├── zh-CN.xaml
 ├── zh-TW.xaml
 ├── ja.xaml
-└── ...(other languages)
+└── ...（其余语言）
 ```
 
-### 6.2 Fallback baseline design (critical)
+### 6.2 回退基准设计（关键）
 
-**Merge `en-US.xaml` permanently in `App.xaml` as the base dictionary**:
+**在 `App.xaml` 中常驻合并 `en-US.xaml` 作为基字典**：
 
 ```xml
 <Application.Resources>
@@ -734,12 +729,12 @@ Resources/Languages/
 </Application.Resources>
 ```
 
-When switching languages, **only append** the new dictionary (never replace the baseline):
+切换语言时**只追加**新字典（不替换基字典）：
 
 ```csharp
 public static void LoadLanguage(string langCode)
 {
-    // 1) Validate + fall back
+    // 1) 校验 + 回落
     if (string.IsNullOrWhiteSpace(langCode) ||
         !SupportedLanguages.Any(l => string.Equals(l.Code, langCode, StringComparison.OrdinalIgnoreCase)))
     {
@@ -747,7 +742,7 @@ public static void LoadLanguage(string langCode)
         langCode = DefaultLanguageCode;
     }
 
-    // 2) Build the new dictionary
+    // 2) 构造新字典
     var dict = new ResourceDictionary
     {
         Source = new Uri($"Resources/Languages/{langCode}.xaml", UriKind.Relative)
@@ -755,7 +750,7 @@ public static void LoadLanguage(string langCode)
 
     var mergedDicts = Application.Current.Resources.MergedDictionaries;
 
-    // 3) Remove the previous language dictionary, then append the new one
+    // 3) 移除上一次的语言字典，再追加新的
     if (_currentLanguageDictionary != null)
         mergedDicts.Remove(_currentLanguageDictionary);
 
@@ -767,9 +762,9 @@ public static void LoadLanguage(string langCode)
 }
 ```
 
-**Payoff**: when any language misses a key, WPF falls back through the merge chain to `en-US`, so the UI shows English - **a bare key like `SomeKey` is never shown to the user**. This lets you add a language incrementally without translating everything at once.
+**收益**：任意语言缺 key 时，WPF 沿合并链回退到 `en-US`，界面显示英文——**绝不会把 `SomeKey` 这样的裸 key 显示给用户**。这使得新增语言可以渐进翻译，不必一次补齐全部词条。
 
-### 6.3 Getting strings
+### 6.3 字符串获取
 
 ```csharp
 public static string GetString(string key)
@@ -787,7 +782,7 @@ public static string GetString(string key, params object[] args)
 }
 ```
 
-Show the supported-language list using **each language's self-name** (so users recognize their own language):
+支持的语言列表用**各语言自称**展示（让用户看懂自己的语言）：
 
 ```csharp
 public static readonly (string Code, string DisplayName)[] SupportedLanguages =
@@ -801,9 +796,9 @@ public static readonly (string Code, string DisplayName)[] SupportedLanguages =
 ];
 ```
 
-### 6.4 RTL (right-to-left) support
+### 6.4 RTL（从右到左）支持
 
-Arabic, Urdu, and similar languages need a mirrored layout:
+阿拉伯语、乌尔都语等需要整体镜像布局：
 
 ```csharp
 private static void ApplyCultureAndDirection(string langCode)
@@ -829,16 +824,16 @@ private static void ApplyCultureAndDirection(string langCode)
 }
 ```
 
-> Key: after switching language you must **iterate all open windows** and set `FlowDirection` on each; setting only new windows misses dialogs that are already open.
+> 要点：切换语言后必须**遍历已打开的窗口**逐个设置 `FlowDirection`，只设新窗口会漏掉已打开的对话框。
 
-### 6.5 Consumption patterns
+### 6.5 消费方式
 
-| Location | Pattern | Takes effect immediately on switch? |
+| 位置 | 写法 | 语言切换是否即时生效 |
 |---|---|---|
-| XAML | `{DynamicResource SomeKey}` | ✅ Yes |
-| Code | `LanguageManager.GetString("SomeKey")` | ❌ No - re-assign after listening to `LanguageChanged` |
+| XAML | `{DynamicResource SomeKey}` | ✅ 即时 |
+| 代码 | `LanguageManager.GetString("SomeKey")` | ❌ 需监听 `LanguageChanged` 事件后重新赋值 |
 
-To react immediately from code, subscribe to the event and refresh in the callback:
+代码里若要即时响应，订阅事件并在回调中重刷：
 
 ```csharp
 LanguageManager.LanguageChanged += OnLanguageChanged;
@@ -846,52 +841,52 @@ LanguageManager.LanguageChanged += OnLanguageChanged;
 private void OnLanguageChanged()
 {
     Title = LanguageManager.GetString("AppTitle");
-    // ... refresh other code-set text
+    // ... 重刷其他代码设置的文本
 }
 ```
 
-> Convention: **use `DynamicResource` in XAML, never `StaticResource`** - `StaticResource` resolves once and will not update after a language switch.
+> 统一约定：**XAML 用 `DynamicResource` 而非 `StaticResource`**——`StaticResource` 只解析一次，切换语言后不会更新。
 
-### 6.6 Checklist for adding a new language
+### 6.6 新增一门语言的检查清单
 
-1. Copy `Resources/Languages/en-US.xaml` to `{langCode}.xaml` and translate entry by entry (**partial translation is allowed** - missing entries fall back to English automatically)
-2. Add `(code, self-name)` to the `LanguageManager.SupportedLanguages` array
-3. If the language is RTL (e.g., ar / ur / fa / he), add a branch to the RTL check in `ApplyCultureAndDirection`
-4. Put `LICENSE.{langCode}.txt` in `Installer/Licenses/`
-5. Add one line to the `[Languages]` section in `setup.iss`
-   - Shipped by Inno Setup - `compiler:Languages\Xxx.isl`
-   - Not shipped - create `Xxx.isl` in `Installer/Languages/` and use the combined `compiler:Default.isl,Installer\Languages\Xxx.isl` form
-6. Run one pack to confirm both the in-app language and the installer language work
+1. 复制 `Resources/Languages/en-US.xaml` 为 `{langCode}.xaml`，逐条翻译（**允许先不翻完**——缺失项会自动回退英文）
+2. 在 `LanguageManager.SupportedLanguages` 数组中加入 `(code, 自称)`
+3. 若该语言为 RTL（如 ar / ur / fa / he），加入 `ApplyCultureAndDirection` 的 RTL 判断分支
+4. 在 `Installer/Licenses/` 放 `LICENSE.{langCode}.txt`
+5. 在 `setup.iss` 的 `[Languages]` 段加一行
+   - Inno Setup 内置 → `compiler:Languages\Xxx.isl`
+   - 未内置 → 在 `Installer/Languages/` 新建 `Xxx.isl`，用 `compiler:Default.isl,Installer\Languages\Xxx.isl` 组合写法
+6. 跑一次打包，确认应用内语言与安装包语言均正确
 
 ---
 
-## 7. Self-Check Checklist
+## 七、自检清单
 
-When delivering a new project or reviewing an existing one, confirm each item:
+交付一个新项目或评审既有项目时，逐项确认：
 
-**Scripts**
-- [ ] Project root has `Run Project.vbs` (VBS, not bat - no black window)
-- [ ] Project root has `Pack.bat` - `Pack.ps1`
-- [ ] Both scripts carry a clear CONFIG / usage block at the top
+**脚本**
+- [ ] 根目录有 `Run Project.vbs`（VBS 而非 bat，无黑窗）
+- [ ] 根目录有 `Pack.bat` → `Pack.ps1`
+- [ ] 两个脚本顶部均有清晰的 CONFIG / 参数说明
 
-**Packaging**
-- [ ] Version centralized in `Version.props` (or `Directory.Build.props`), nothing scattered
-- [ ] Path allow-list validation + reparse-point refusal before cleaning any directory
-- [ ] External tools (Inno Setup / signtool / msbuild) resolved **before** any file is modified
-- [ ] Post-obfuscation assertion that hashes differ
-- [ ] Signing adds a timestamp and verifies afterward; without a cert, degrade to `-unsigned` instead of failing
-- [ ] Smoke test redirects `APPDATA`/`LOCALAPPDATA` and has a timeout
-- [ ] `-Target Both` produces installer + Store package in one run; missing Store prerequisites degrade to skip
+**打包**
+- [ ] 版本号集中在 `Version.props`（或 `Directory.Build.props`），无散落
+- [ ] 清理目录前有路径白名单校验 + reparse point 拒删
+- [ ] 外部工具（Inno Setup / signtool / msbuild）在改动任何文件**之前**解析
+- [ ] 混淆后有「前后哈希必须不同」的断言
+- [ ] 签名加时间戳并签名后验证；无证书时降级为 `-unsigned` 而非中断
+- [ ] 冒烟测试重定向 `APPDATA`/`LOCALAPPDATA`，且有超时
+- [ ] `-Target Both` 能一次产出安装包 + 商店包；商店前置缺失时可降级跳过
 
-**Testing**
-- [ ] Unit / integration split via `FullyQualifiedName~Integration`, run as two passes
-- [ ] Database tests use InMemory
-- [ ] Tests are pipeline gates; failure aborts the run
-- [ ] Avalonia projects enable Headless end-to-end tests
+**测试**
+- [ ] 单元 / 集成靠 `FullyQualifiedName~Integration` 分离，分两次跑
+- [ ] 数据库测试用 InMemory
+- [ ] 测试是打包流水线的门禁，失败即中断
+- [ ] Avalonia 项目已启用 Headless 端到端测试
 
-**Localization**
-- [ ] `App.xaml` permanently merges `en-US.xaml` as the fallback baseline
-- [ ] XAML consistently uses `DynamicResource`
-- [ ] Code-set text refreshes by listening to `LanguageChanged`
-- [ ] RTL languages iterate all windows to set `FlowDirection` after switching
-- [ ] In-app language count == `Installer/Licenses/*.txt` count == `setup.iss [Languages]` entry count
+**多语言**
+- [ ] `App.xaml` 常驻 `en-US.xaml` 作为回退基准
+- [ ] XAML 统一用 `DynamicResource`
+- [ ] 代码设置的文本监听 `LanguageChanged` 事件刷新
+- [ ] RTL 语言切换后遍历所有窗口设置 `FlowDirection`
+- [ ] 应用语言数 == `Installer/Licenses/*.txt` 数 == `setup.iss [Languages]` 条目数
