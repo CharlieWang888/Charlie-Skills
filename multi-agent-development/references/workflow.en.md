@@ -1,8 +1,3 @@
----
-name: multi-agent-development-en
-description: Use when coordinating ongoing software development with multiple coding agents, independent review, Git branches, persistent task tracking, or repeated implement-test-review-fix-merge cycles. English version; Simplified Chinese version is multi-agent-development.
----
-
 # Autonomous Multi-Agent Software Development Workflow (V1.0)
 
 **Core principle: one lead orchestrates, at most two engineers implement in parallel, and one independent reviewer verifies. Persist task state, require real test evidence, and clean up branches safely.**
