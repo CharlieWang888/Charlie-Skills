@@ -1,32 +1,38 @@
 ---
 name: multi-agent-development
-description: Use when coordinating software development with multiple agents, independent review, persistent task tracking, Git branch isolation, or implement-test-review-merge cycles; also when binding AGENTS.md to mandatory multi-agent workflow and tracking per-agent, subtask, and total elapsed time. 适用于强绑定仓库协同开发及记录耗时。
+description: Use when coordinating software development with multiple agents, independent code and UI/UX review, persistent task tracking, Git branch isolation, implement-test-review-merge cycles, AGENTS.md repository binding, or per-agent/subtask/total elapsed-time reporting. 适用于强绑定仓库多任务协同、按需调度工程师、UI/UX 验收及真实计时。
 ---
 
-# Multi-Agent Development / 多 Agent 自主软件开发
+# Multi-Agent Development / 多 Agent 自主软件开发（V2.0）
 
-One workflow, one Skill entry, two language references. **The language changes the explanation, not the task state machine or quality gates.** 单一 Skill 入口，语言只影响说明，不改变任务状态与验收标准。
+One Skill entry and one state machine, with Chinese and English workflow references. Language affects presentation, never scheduling, quality gates, or permissions. 单一入口与状态机，中英文规则同等有效。
 
-## Mandatory repository gate / 仓库强绑定门禁
+## Non-negotiable repository gate / 仓库强绑定门禁
 
-**On EVERY invocation**, before assigning any development work, read [references/repository-binding.md](references/repository-binding.md) completely and enforce its managed block in the target repository root `AGENTS.md`. Create the file if absent; otherwise update the marked section without overwriting existing rules. Commit/push the binding within the user's authorized workflow. If this cannot be safely done, report `BLOCKED` and request direction—never claim a binding that was not persisted. **每次使用本 Skill 都必须检查并写入项目根目录 `AGENTS.md`，持久强制后续多 Agent 协同。**
+**Every invocation, before product-code changes, task-state transitions or engineering dispatch:**
 
-Immediately print the real start timestamp (including timezone) and start a Lead round timer. On every stop, report the actual end timestamp and elapsed time; record each agent/subtask time and overall project elapsed time in `TASKS.md` or its equivalent. **总历时、单轮耗时、各 Agent 与小任务耗时必须区分；并行时长不得直接相加当作总耗时。** See the binding reference for exact fields and a reusable `AGENTS.md` block.
+1. Start the Lead round clock and print a **real timestamp with timezone**. Read [repository-binding.md](references/repository-binding.md) **completely**.
+2. Read the target repository root `AGENTS.md` and applicable nested instructions. Create or update **only** the uniquely marked managed block from the binding reference; preserve unrelated instructions. Persist and commit/push under existing authorization and branch policy. If this cannot safely be persisted, mark `BLOCKED` and request direction; never silently bypass the binding.
+3. Record the scope's original first start, each round's start/end/elapsed time, each Agent's and measurable subtask's time, and total wall-clock elapsed time in canonical `TASKS.md` or its equivalent. Preserve original start across sessions; never add overlapping Agent durations to manufacture total elapsed time. Mark unknowns `NOT MEASURED`.
 
+**每次调用都必须重检项目根目录 `AGENTS.md` 的强绑定，先记真实时间、持久化约束后再派单；跨会话总历时不能重置。**
 
-## Choose the reference / 选择参考文档
+## Select full workflow / 选择完整工作流
 
-| User language / 用户语言 | Read / 读取 |
+| User language / 用户语言 | Required reference / 必读 |
 |---|---|
-| 中文 | [references/workflow.zh-CN.md](references/workflow.zh-CN.md) |
-| English or other languages | [references/workflow.en.md](references/workflow.en.md) |
-| Explicit bilingual comparison / 明确要求双语对照 | Read both / 两份都读取 |
+| 中文 | [workflow.zh-CN.md](references/workflow.zh-CN.md) |
+| English or other | [workflow.en.md](references/workflow.en.md) |
+| Explicit bilingual comparison / 双语对照 | Read both / 两份都读 |
 
-1. Read both the mandatory repository-binding reference above and the selected language's full workflow before dispatching tasks; do not treat this short router as the full procedure. 派单前必须完整阅读强绑定模板和所选语言工作流。
-2. Enforce the `AGENTS.md` gate and clock/reporting contract before dispatch; confirm the binding is persisted or report `BLOCKED`. 派单前完成强绑定和计时门禁。
-3. The main conversation acts as Lead, with at most two engineering subagents and one independent reviewer; obey the runtime's actual agent and tool availability. 主会话担任 Lead，最多两名工程师与一名审查员，不能虚构可用能力。
-4. Persist canonical task status in the repository; require reproducible testing, review of the exact SHA, and Lead-authorized integration. 在仓库保存任务状态，按真实测试与固定 SHA 复审，经授权后合并。
-5. Preserve unmerged or uncommitted work and respect protected branches; report blocked tests or missing permissions honestly. 保留未合并和未提交成果，遵守权限与保护分支规则。
-6. Respond in the user's language; keep Git branch names, status tokens, commands and SHA values unchanged. 使用用户语言沟通，保持技术标识不变。
+Also read [UI/UX acceptance contract](references/ui-ux-acceptance.md) completely for any UI-affecting task or release readiness check. 对 UI 相关任务和发布验收，完整阅读 UI/UX 规范。
 
-Do not load two separate language Skills for the same task. 同一任务不应重复加载两个语言 Skill。
+## Mandatory orchestration / 强制协同规则
+
+1. **Lead = the main conversation; up to five concurrently assigned Engineers; one independent Reviewer.** The Lead determines the number of Engineers from independent ready tasks, file ownership, review capacity and actual runtime slots. **Five is a hard cap, not a target.** Ready tasks beyond available capacity go into durable `QUEUED`; never spawn a sixth Engineer or bypass the queue. `Lead` 按需确定人数，上限硬性 5 人；超出排队，不能默认固定 2 人。
+2. Give every task an explicit dispatch brief (goal, dependency, exclusive file/module owner, interface contract, acceptance commands/criteria, out of scope, branch). Keep a dependency graph, critical path, decision log and restartable task ledger; only Lead changes canonical assignment/state. Avoid concurrent writes to shared files or `TASKS.md`.
+3. Engineers isolate work in per-task branches/worktrees, write tests and self-test, commit/push and report exact SHA/commands/results/timestamps. Reviewer independently tests the **exact SHA**, checks specification compliance then code quality, and runs applicable functional **and UI/UX** acceptance. Reviewer issues evidence-backed `APPROVED`, `REJECTED` or `BLOCKED`; never silently approve missing mandatory environments.
+4. For UI-affecting changes, Reviewer produces an independent, reproducible UI/UX review with screenshots/video or comparable actual execution evidence, critical-path and viewport/DPI/device matrix, severity and **score out of 100**. Merge gate: **at least 85**, release gate: **at least 90**, **zero P0/P1 blocking defects**, and all mandatory checks passing. Scores cannot override a hard failure. Non-UI changes follow the documented applicability rule.
+5. Lead alone authorizes integration within permission limits; compare branch HEAD to reviewer-approved SHA, and rerun mandatory target-branch tests after integration before marking `DONE`. Preserve unmerged data/worktrees and respect protected branches. If Agent tools or required test devices are missing, report `BLOCKED` and ask for a permitted execution path.
+
+Use the language-specific reference as the detailed procedure; do not assume this short router is sufficient. 禁止用短入口替代完整流程，禁止虚构 Agent、时间、设备测试或批准结果。
