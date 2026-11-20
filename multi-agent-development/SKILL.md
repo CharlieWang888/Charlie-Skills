@@ -3,7 +3,7 @@ name: multi-agent-development
 description: Use when coordinating software development with multiple agents, independent code and UI/UX review, persistent task tracking, Git branch isolation, implement-test-review-merge cycles, AGENTS.md repository binding, or per-agent/subtask/total elapsed-time reporting. 适用于强绑定仓库多任务协同、按需调度工程师、UI/UX 验收及真实计时。
 ---
 
-# Multi-Agent Development / 多 Agent 自主软件开发（V2.0）
+# Multi-Agent Development / 多 Agent 自主软件开发（V2.1）
 
 One Skill entry and one state machine, with Chinese and English workflow references. Language affects presentation, never scheduling, quality gates, or permissions. 单一入口与状态机，中英文规则同等有效。
 
@@ -11,11 +11,11 @@ One Skill entry and one state machine, with Chinese and English workflow referen
 
 **Every invocation, before product-code changes, task-state transitions or engineering dispatch:**
 
-1. Start the Lead round clock and print a **real timestamp with timezone**. Read [repository-binding.md](references/repository-binding.md) **completely**.
+1. Start the Lead round clock immediately and print the **real event time converted to Tokyo time: `Asia/Tokyo` (JST, UTC+09:00)**, regardless of host/Agent timezone. Use `YYYY-MM-DD HH:MM:SS +09:00 zone=Asia/Tokyo` for every `START`/`END`/subtask timestamp. Read [repository-binding.md](references/repository-binding.md) **completely**.
 2. Read the target repository root `AGENTS.md` and applicable nested instructions. Create or update **only** the uniquely marked managed block from the binding reference; preserve unrelated instructions. Persist and commit/push under existing authorization and branch policy. If this cannot safely be persisted, mark `BLOCKED` and request direction; never silently bypass the binding.
-3. Record the scope's original first start, each round's start/end/elapsed time, each Agent's and measurable subtask's time, and total wall-clock elapsed time in canonical `TASKS.md` or its equivalent. Preserve original start across sessions; never add overlapping Agent durations to manufacture total elapsed time. Mark unknowns `NOT MEASURED`.
+3. Record the original first start, each round's start/end/elapsed time, every Agent's and measurable subtask's timing, UI/UX review time, and total wall-clock elapsed in canonical `TASKS.md` or equivalent. **All new timestamp fields, task ledgers and user-facing reports use `Asia/Tokyo` (+09:00), even on UTC/US hosts**; convert legacy offset-aware first-start instants to JST for display while preserving their original instant/provenance. Elapsed durations are timezone-independent; never reset the first start or add parallel Agent durations to fabricate project elapsed time. Mark unknowns `NOT MEASURED`.
 
-**每次调用都必须重检项目根目录 `AGENTS.md` 的强绑定，先记真实时间、持久化约束后再派单；跨会话总历时不能重置。**
+**每次调用都必须重检项目根目录 `AGENTS.md` 的强绑定，先将真实事件时间换算为东京 `Asia/Tokyo`（UTC+09:00）并计时，持久化约束后再派单；所有 Agent/子任务/审查/最终报告一律 JST，跨会话总历时不重置。**
 
 ## Select full workflow / 选择完整工作流
 
