@@ -1,4 +1,4 @@
-# AI 多 Agent 自主软件开发工作流（V2.1）
+# AI 多 Agent 自主软件开发工作流（V2.2）
 
 **核心原则：Lead 根据任务和资源动态决定工程师人数，硬上限 5 名；超额任务进入 `QUEUED`；1 名独立审查员完成代码、测试和适用的 UI/UX 验收。任务状态可续接，证据真实，安全合并。**
 
@@ -16,7 +16,7 @@
 
 ## 2. 启动与唯一数据源
 
-**强制前置步骤：** Lead 先将真实系统时刻换算为东京时间 `Asia/Tokyo`（JST，UTC+09:00）输出启动时间、启动本轮计时器，然后完整阅读 [仓库绑定与计时模板](repository-binding.md)。在任何开发派单、业务代码修改或任务状态推进前，检查 Git 根目录 `AGENTS.md`：不存在则创建，已有则只新增/更新模板中标记的区块且保留其余规则；按授权提交并推送。未能安全持久化则标记 `BLOCKED` 并请求用户指示，不得静默跳过。任何再次调用本 Skill 也必须重检，避免重复插入。
+**强制前置步骤：** Lead 立即读取真实系统时刻并开始计时，完整阅读 [仓库绑定与计时模板](repository-binding.md) 和现有根目录 `AGENTS.md`，按仓库明确的非托管时区规则（否则默认 `Asia/Tokyo` JST UTC+09:00）换算并输出真实启动时刻。在任何开发派单、业务代码修改或任务状态推进前，检查 Git 根目录 `AGENTS.md`：不存在则创建，已有则只新增/更新模板中标记的区块且保留其余规则；按授权提交并推送。未能安全持久化则标记 `BLOCKED` 并请求用户指示，不得静默跳过。任何再次调用本 Skill 也必须重检，避免重复插入。
 
 1. 获取并核对仓库最新远端状态、默认分支、未合并工作和现有测试基线。
 2. 阅读现有 `AGENTS.md`、`PRD.md`、路线图及任务文件；若名称不同，优先复用。缺少时根据已确认的仓库规则与用户需求建立精简版本；缺少需求或验收依据则先澄清，不自行推测产品范围。
@@ -26,11 +26,11 @@
 
 ### 计时和留痕（所有 Agent 强制）
 
-- **统一时区（硬约束）：** Lead、Engineer、Reviewer、子任务、UI/UX Reviewer 和最终报告的**所有时间戳**必须统一使用东京 `Asia/Tokyo`（日本标准时间 JST，UTC+09:00），与 Agent 所在机器时区无关。以真实时钟取得事件的瞬时时刻并换算为东京时间；格式 `YYYY-MM-DD HH:MM:SS +09:00 zone=Asia/Tokyo`。不得直接打印 UTC、北京时间、美国当地时间，或只修改偏移而不换算日期与小时。
-- **每轮启动：** 每个角色在实际开始时输出 `[START] role=... time=YYYY-MM-DD HH:MM:SS +09:00 zone=Asia/Tokyo`；Lead 立即启动本轮总计时。
-- **每轮结束、暂停或阻塞：** 各角色输出换算成 JST 的真实结束时间和本轮耗时 `HH:MM:SS`；Lead 同时输出当前总体历时。任何已完成且可测量的小任务额外记录 JST 开始、结束及耗时。工时是时长，不因时区转换而改变。
-- **总任务计时：** 首次启动时间以 JST 标准化记录到 `TASKS.md` 或现有任务台账；多轮续接不得重置。对历史已经记录了 UTC/其他合法偏移的首次启动时间，**保留原始瞬时点/出处并增加 JST 展示值，不得通过改时区改变任务起点**。最终完成时以 JST 展示首次开始、最终结束、总体墙钟历时；暂停与等待包含在内。另计活跃执行时间须单独标示，**不能把并行 Agent 的耗时相加当作总体历时**。
-- **真实性：** 以实际可用系统时钟获取瞬时点、换算为 `Asia/Tokyo`；跨时区历时用同一绝对时间轴相减，同一连续执行段尽量使用单调时钟计算。不可准确取得的时间标注 `NOT MEASURED` 及原因，不得倒填、伪造、误把机器本地时间标成 +09:00，或声称对话结束后仍在后台持续计时。具体格式以 [统一模板](repository-binding.md) 为准。
+- **统一时区（硬约束）：** Lead、Engineer、Reviewer、子任务、UI/UX Reviewer、`TASKS.md` 和最终报告的**所有新时间戳**必须使用仓库同一有效时区。优先遵循既有根 `AGENTS.md` 非托管段明确的 IANA 时区和 UTC 偏移（如 Knife-Zip 经用户确认的 `Asia/Shanghai` UTC+08:00），否则默认东京 `Asia/Tokyo`（JST，UTC+09:00）。以真实时钟取得事件瞬时点并换算；格式 `YYYY-MM-DD HH:MM:SS <offset> zone=<IANA-zone>`。若仓库时区规则含混或彼此冲突，标 `BLOCKED` 请求用户确认，禁止修改非托管规则或只替换偏移标签。
+- **每轮启动：** 每个角色在实际开始时读取时刻，按仓库有效时区输出 `[START] role=... time=YYYY-MM-DD HH:MM:SS <offset> zone=<IANA-zone>`；Lead 立即启动本轮总计时。
+- **每轮结束、暂停或阻塞：** 各角色输出换算成仓库有效时区的真实结束时间和本轮耗时 `HH:MM:SS`；Lead 同时输出当前总体历时。任何已完成且可测量的小任务额外记录同一时区的开始、结束及耗时。工时不因时区转换而改变。
+- **总任务计时：** 首次启动时间以仓库有效时区记录到 `TASKS.md` 或现有任务台账；多轮续接不得重置。对历史其他合法偏移的首次启动时间，**保留原始瞬时点/出处，按需增加仓库时区的展示值，不得改变任务起点**。最终完成时以该时区展示首次开始、最终结束、总体墙钟历时；暂停与等待包含在内。另计活跃执行时间须单独标示，**不能把并行 Agent 的耗时相加当作总体历时**。
+- **真实性：** 以实际可用系统时钟获取瞬时点、换算为仓库有效时区；跨时区历时用同一绝对时间轴相减，连续执行段尽量用单调时钟。不可准确取得的时间标 `NOT MEASURED` 及原因，不得倒填、伪造、仅改偏移标签，或声称对话结束后仍后台计时。格式以 [统一模板](repository-binding.md) 为准。
 
 ### 状态机
 
@@ -68,7 +68,7 @@ Exclusive editable files and modules / shared files' single owner
 Interface/API contract and integration assumptions
 Acceptance: exact commands, expected result, platform, UI_SCOPE, UI/UX matrix
 Out of scope / do-not-change / required evidence
-Handoff: commit SHA, test exit codes/counts, findings, timestamps in Asia/Tokyo (+09:00)
+Handoff: commit SHA, test exit codes/counts, findings, timestamps in effective repository timezone (Tokyo +09:00 by default)
 ```
 
 Lead 在 `TASKS.md` 或现有等价文件维护：`TODO → QUEUED → IN_PROGRESS → IN_REVIEW → APPROVED → DONE`（返工经 `REJECTED`，阻塞经 `BLOCKED`）；任务依赖 DAG、关键路径、文件所有权表、排队原因、上次已审核 SHA、未合并分支清单、决策和阻塞日志，以及下一轮续接的确切动作。依赖尚未满足的任务保留 `TODO`，不得假装已就绪。两个工程师若需要修改同一共享接口/文件，先由 Lead 定唯一 owner 和接口契约，或者串行，不能在两个可写 Worktree 各自改同一文件后期待自动无冲突合并。
@@ -87,7 +87,7 @@ Lead 在 `TASKS.md` 或现有等价文件维护：`TODO → QUEUED → IN_PROGRE
 - 对 `UI_SCOPE=FULL`，Reviewer 在目标平台实际跑关键任务路径，做布局/DPI/文字缩放、交互、键盘/触控、可访问性、主题/长文本与异常状态检查，提交按维度评分的独立 UI/UX 报告及截图/视频/自动化日志。**合并须 ≥85/100、发布须 ≥90/100，且不得有 P0/P1 阻断项**；得分不能抵消硬门禁。`SMOKE` 走明确的 UI 冒烟，`NA` 说明原因且分数写 `NOT APPLICABLE`。具体矩阵、权重及报告字段见 [UI/UX 规范](ui-ux-acceptance.md)。
 - 特定**必需**平台无法实测时逐项注明 `NOT RUN`、风险和 `BLOCKED`；不得把 Linux 测试冒充 Windows/iOS 实机验收。已实证失败的必需检查应 `REJECTED`，不能被其他通过项遮掩。
 
-审查问题用 `P0 Critical / P1 High / P2 Medium / P3 Low` 标注，`P0/P1` 为阻断项。报告至少含：东京时间（JST）的审查开始/结束时间与耗时、任务 ID、固定 SHA、规格符合性结论、独立测试命令/退出码/计数、复现步骤、相关文件、严重等级、预期/实际行为、环境、未测项目及建议。对 `FULL` UI 任务增加平台矩阵、证据、五维评分/总分、合并与发布结论。Reviewer 向 Lead 提交审查报告；**由 Lead 保存 `reviews/<task-id>-ui-ux.md` 或等价报告并从 `TASKS.md` 关联**，避免多人争写正式台账。审查员不修改任何业务文件。
+审查问题用 `P0 Critical / P1 High / P2 Medium / P3 Low` 标注，`P0/P1` 为阻断项。报告至少含：仓库有效时区的审查开始/结束时间与耗时、任务 ID、固定 SHA、规格符合性结论、独立测试命令/退出码/计数、复现步骤、相关文件、严重等级、预期/实际行为、环境、未测项目及建议。对 `FULL` UI 任务增加平台矩阵、证据、五维评分/总分、合并与发布结论。Reviewer 向 Lead 提交审查报告；**由 Lead 保存 `reviews/<task-id>-ui-ux.md` 或等价报告并从 `TASKS.md` 关联**，避免多人争写正式台账。审查员不修改任何业务文件。
 
 ## 5. 返工与阻塞
 
@@ -111,6 +111,6 @@ Lead 在 `TASKS.md` 或现有等价文件维护：`TODO → QUEUED → IN_PROGRE
 
 仅当本轮范围所有任务均为 `DONE`、无遗留 `TODO/QUEUED/IN_PROGRESS/IN_REVIEW/REJECTED/BLOCKED`、所有代码已推送并按授权合并、集成分支必需测试全通过、适用的 UI/UX 合并/发布门禁通过且审查员提供最终结论时，才宣布完成并让 Agent 休息。遇到阻塞则说明未完成原因，保留可续接状态。
 
-Lead 每轮阶段性汇报保持简洁，最终报告至少包含：按 `Asia/Tokyo`（+09:00）输出的本轮启动/结束时间及耗时、首次任务启动时间及总体历时、各 Agent 和已完成小任务耗时、总/完成/`QUEUED`/阻塞任务数、Lead 确认的 Engineer 人数与并发分支数、关键路径和阻塞决策、功能与 Bug 修复、独立测试命令及结果、UI/UX 矩阵/得分/阻断项、Git 分支与 SHA、合并及清理情况、审查结论、剩余风险和用户需要验收的内容。
+Lead 每轮阶段性汇报保持简洁，最终报告至少包含：按仓库有效时区（默认 `Asia/Tokyo` +09:00）输出的本轮启动/结束时间及耗时、首次任务启动时间及总体历时、各 Agent 和已完成小任务耗时、总/完成/`QUEUED`/阻塞任务数、Lead 确认的 Engineer 人数与并发分支数、关键路径和阻塞决策、功能与 Bug 修复、独立测试命令及结果、UI/UX 矩阵/得分/阻断项、Git 分支与 SHA、合并及清理情况、审查结论、剩余风险和用户需要验收的内容。
 
 **常见错误：**仍固定两名 Engineer，或把上限 5 当作必须派满；超过 5 不入队就擅派第 6 人；共享文件多人并改；Reviewer 不实测界面只看美观截图；用 85 分掩盖 P1；把缺失的 Windows/iOS 验收记为 PASS；任务状态只放聊天；在未合并前删分支；审核失败后跳过 Lead 私自派单。出现任一问题即停止相应状态推进并纠正。

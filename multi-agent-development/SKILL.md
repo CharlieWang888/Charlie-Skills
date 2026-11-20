@@ -3,7 +3,7 @@ name: multi-agent-development
 description: Use when coordinating software development with multiple agents, independent code and UI/UX review, persistent task tracking, Git branch isolation, implement-test-review-merge cycles, AGENTS.md repository binding, or per-agent/subtask/total elapsed-time reporting. 适用于强绑定仓库多任务协同、按需调度工程师、UI/UX 验收及真实计时。
 ---
 
-# Multi-Agent Development / 多 Agent 自主软件开发（V2.1）
+# Multi-Agent Development / 多 Agent 自主软件开发（V2.2）
 
 One Skill entry and one state machine, with Chinese and English workflow references. Language affects presentation, never scheduling, quality gates, or permissions. 单一入口与状态机，中英文规则同等有效。
 
@@ -11,11 +11,13 @@ One Skill entry and one state machine, with Chinese and English workflow referen
 
 **Every invocation, before product-code changes, task-state transitions or engineering dispatch:**
 
-1. Start the Lead round clock immediately and print the **real event time converted to Tokyo time: `Asia/Tokyo` (JST, UTC+09:00)**, regardless of host/Agent timezone. Use `YYYY-MM-DD HH:MM:SS +09:00 zone=Asia/Tokyo` for every `START`/`END`/subtask timestamp. Read [repository-binding.md](references/repository-binding.md) **completely**.
+1. Capture the Lead round's real start instant immediately; read [repository-binding.md](references/repository-binding.md) **completely** and inspect pre-existing root `AGENTS.md` to select the effective repository timezone before formatting the `[START]` output. Print every event instant using the selected IANA zone/UTC offset; `Asia/Tokyo` (JST, UTC+09:00) is the default, not an override of an explicit non-managed project rule.
 2. Read the target repository root `AGENTS.md` and applicable nested instructions. Create or update **only** the uniquely marked managed block from the binding reference; preserve unrelated instructions. Persist and commit/push under existing authorization and branch policy. If this cannot safely be persisted, mark `BLOCKED` and request direction; never silently bypass the binding.
-3. Record the original first start, each round's start/end/elapsed time, every Agent's and measurable subtask's timing, UI/UX review time, and total wall-clock elapsed in canonical `TASKS.md` or equivalent. **All new timestamp fields, task ledgers and user-facing reports use `Asia/Tokyo` (+09:00), even on UTC/US hosts**; convert legacy offset-aware first-start instants to JST for display while preserving their original instant/provenance. Elapsed durations are timezone-independent; never reset the first start or add parallel Agent durations to fabricate project elapsed time. Mark unknowns `NOT MEASURED`.
+3. Record original first start, each round's start/end/elapsed time, every Agent's and measurable subtask's timing, UI/UX review time, and total wall-clock elapsed in canonical `TASKS.md` or equivalent. **Use the effective repository timezone consistently in all new timestamp fields, task ledgers and user-facing reports**; convert offset-aware instants for display without changing the true first-start or provenance. Never add parallel Agent durations as total elapsed. Mark unknowns `NOT MEASURED`.
 
-**每次调用都必须重检项目根目录 `AGENTS.md` 的强绑定，先将真实事件时间换算为东京 `Asia/Tokyo`（UTC+09:00）并计时，持久化约束后再派单；所有 Agent/子任务/审查/最终报告一律 JST，跨会话总历时不重置。**
+**Timezone precedence / 时区优先级（强制）：** Before dispatch, read the existing root `AGENTS.md`. If a pre-existing **non-managed** instruction expressly mandates a valid IANA time zone and UTC offset, that repository rule determines the effective zone for every Agent, subtask, `TASKS.md` entry and report. Otherwise use `Asia/Tokyo` (JST, UTC+09:00). Convert actual event instants to the selected zone; keep the original first-start instant and provenance. Never silently edit/override a non-managed rule or mix zones within one repository. If the rule is ambiguous, invalid or contradictory, mark `BLOCKED` and ask the user. **Existing Knife-Zip rule `Asia/Shanghai` (UTC+08:00) is an authorized example.**
+
+**每次调用都必须重检项目根目录 `AGENTS.md` 的强绑定，先读取真实事件时间与仓库非托管时区规则，再换算为该仓库统一时区并计时；无明确规则时默认东京 `Asia/Tokyo`（UTC+09:00）。所有 Agent/子任务/审查/最终报告使用同一有效时区，跨会话总历时不重置。**
 
 ## Select full workflow / 选择完整工作流
 
