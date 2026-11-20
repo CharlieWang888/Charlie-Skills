@@ -1,4 +1,4 @@
-# Independent UI/UX Acceptance Contract / 独立 UI/UX 验收规范（V2.0）
+# Independent UI/UX Acceptance Contract / 独立 UI/UX 验收规范（V2.1）
 
 **Normative whenever a task changes user-visible UI, navigation, interaction, accessibility, localization or layout, or a release requires visual acceptance.** 此规范与代码、构建、自动化测试门禁并列；评分只能补充客观检查，不能抵消失败。
 
@@ -68,7 +68,7 @@ Reference defaults, interpreted per platform/project, include WCAG 2.2 AA and WC
 
 ## 4. Independent execution and report / 独立运行与报告
 
-1. Reviewer checks out **the exact candidate SHA** in an isolated environment; records platform/build, window/screen resolution, scaling/font size, theme, locale, input method, device/emulator and test-tool version as applicable.
+1. Reviewer checks out **the exact candidate SHA** in an isolated environment; records platform/build, window/screen resolution, scaling/font size, theme, locale, input method, device/emulator and test-tool version as applicable. **All Reviewer/UI test run start/end timestamps and report fields use `Asia/Tokyo` (+09:00), regardless of the host's local timezone; convert real event instants and leave elapsed durations unchanged.**
 2. Actually executes required user journeys through app UI automation, browser automation, accessibility inspection or native GUI/simulator/real-device interaction. Screenshots alone or Engineer-supplied screenshots **do not count as independent execution**. Preserve screenshots/video/automation logs when obtainable with steps and SHA; redact secrets and personal information.
 3. Record every matrix cell as `PASS`, `FAIL` or `NOT RUN` with why; distinguish automated, simulator and physical-device results. Do not claim all requested DPI combinations passed if untested. If mandatory GUI hardware/runtime is absent, use `BLOCKED` and ask Lead to arrange it, not a Linux-only `APPROVED`.
 4. Two independent review passes: **specification/acceptance compliance first**, then **code/architecture/quality** and UI/UX when applicable. Report to Lead; Lead, not Reviewer, assigns remediation. Independently rerun any changed SHA. Review backlog may delay new dispatch.
@@ -77,10 +77,10 @@ Reference defaults, interpreted per platform/project, include WCAG 2.2 AA and WC
 ### Required report fields / 必填字段
 
 ```text
-Task ID / exact SHA / reviewer / reviewer [START] [END] elapsed
+Task ID / exact SHA / reviewer / reviewer [START] [END] in Asia/Tokyo (+09:00) / elapsed HH:MM:SS
 UI_SCOPE=FULL | SMOKE | NA; merge or release gate
 Requirements and critical flows; supported platforms and required matrix
-Test run: tool, exact command/action steps, environment, result, exit code if applicable
+Test run: tool, exact command/action steps, environment, result, exit code if applicable, start/end Asia/Tokyo (+09:00)
 Matrix: platform | resolution | scale/font | locale/theme/input | PASS/FAIL/NOT RUN | evidence
 Findings: P0/P1/P2/P3 | expected vs actual | steps | impact | evidence | owner via Lead
 Score (FULL only): layout /25, flow /25, consistency /20, accessibility /20, locale/states /10; total /100; rationale
