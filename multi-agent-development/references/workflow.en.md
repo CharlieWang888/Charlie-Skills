@@ -1,6 +1,6 @@
-# Autonomous Multi-Agent Software Development Workflow (V1.1)
+# Autonomous Multi-Agent Software Development Workflow (V2.0)
 
-**Core principle: one lead orchestrates, at most two engineers implement in parallel, and one independent reviewer verifies. Persist task state, require real test evidence, and clean up branches safely.**
+**Core principle: Lead chooses the number of Engineers dynamically, with a hard maximum of five; excess ready tasks enter `QUEUED`. One independent Reviewer verifies specifications, actual code/test results, and applicable UI/UX quality. Keep resumable state, real evidence and safe integration.**
 
 Apply this skill to ongoing work in an existing Git repository. Respect the user's authorization, the repository's existing workflow, available tools, and platform permissions. A chat session is not an indefinitely running background service.
 
@@ -9,10 +9,10 @@ Apply this skill to ongoing work in an existing Git repository. Respect the user
 | Role | Count | Responsibilities | Must not |
 |---|---:|---|---|
 | Lead / project manager (main conversation) | 1 | Inspect the repository, plan and assign tasks, update canonical task state, coordinate authorized merges and cleanup, report progress | Implement product code; bypass approvals or protected branches |
-| Engineer | Up to 2 | Implement with TDD, test, fix, commit and push in isolated branches/worktrees | Self-approve or mark a task DONE; assign tasks or merge protected branches |
-| Reviewer | 1 | Independently check code, run verification commands, issue a structured verdict | Edit product code, relax quality gates, dispatch work or merge |
+| Engineer | 0–5, chosen by Lead; hard cap 5 | Implement with TDD, test, fix, commit and push in isolated branches/worktrees | Spawn a sixth Engineer; self-approve or mark DONE; assign tasks or merge protected branches |
+| Reviewer | 1 | Independently check spec compliance, code quality, actually run tests and applicable UI/UX gates on an exact SHA; issue a structured verdict | Edit product code, relax test/UI gates, dispatch work or merge |
 
-The Lead is the **only dispatcher**. Engineers and the reviewer report to the Lead; the reviewer does not assign fixes directly. If subagents cannot be created, state that limitation and ask how to proceed. Never invent agent work or test results.
+The Lead is the **only dispatcher** and selects 0–5 Engineers based on dependency-ready independent work, file ownership, review throughput, actual available slots and cost. **Five is a ceiling, never a required team size.** Put additional ready work into durable `QUEUED`, never start a sixth Engineer. Engineers and the Reviewer report to Lead; Reviewer does not assign fixes directly. For unusually high-risk work Reviewer may recommend a specialist check, scheduled only by Lead within user authorization and actual agent capacity, without replacing the single final independent Reviewer. If subagents cannot be created, mark `BLOCKED` and request direction. Never invent agent work or tests.
 
 ## 2. Start from a single source of truth
 
@@ -21,7 +21,7 @@ The Lead is the **only dispatcher**. Engineers and the reviewer report to the Le
 1. Fetch and inspect the latest remote repository state, default branch, outstanding work and test baseline.
 2. Read the existing `AGENTS.md`, `PRD.md`, roadmap and task tracker; reuse equivalent files if named differently. Where missing, create concise versions from confirmed repository conventions and user requirements; clarify missing scope or acceptance requirements rather than inventing them.
 3. Have the Lead maintain `TASKS.md` or the existing equivalent. **Only the Lead changes canonical task states and assignees**; other roles submit structured reports. Commit/push significant state transitions to the agreed shared branch so remote state is resumable; never race multiple branch copies of the task tracker.
-4. Record for each task: unique ID, objective, assignee, priority, dependencies, allowed modules/files, acceptance criteria and commands, status, branch, commit SHA and review evidence.
+4. Record for each task: ID, objective, priority, dependencies and `READY/WAITING` determination, assignee, **exclusive file/module ownership**, shared interface contract, acceptance commands/criteria, `UI_SCOPE`, explicit out-of-scope boundary, state, branch, SHA and linked review evidence. Keep a dependency/critical-path view, dispatch/decision log and precise resume pointer; persist queue reasons.
 5. Reread task instructions and relevant repository rules before every assignment. Never assume a new subagent inherits an earlier conversation.
 
 ### Mandatory timing and durable evidence for every agent
@@ -35,7 +35,8 @@ The Lead is the **only dispatcher**. Engineers and the reviewer report to the Le
 
 | State | Meaning |
 |---|---|
-| `TODO` | Defined and waiting for assignment |
+| `TODO` | Defined but not dependency-ready, or not yet placed among ready candidates |
+| `QUEUED` | Dependency-ready but awaiting Engineer/branch/Reviewer capacity or scheduling priority; preserve queue reason and priority |
 | `IN_PROGRESS` | Assigned for implementation or rework |
 | `IN_REVIEW` | Engineer pushed the change and supplied self-test evidence |
 | `REJECTED` | Independent review failed; Lead must dispatch the fix |
@@ -47,26 +48,45 @@ Engineer completion, reviewer approval and merge success are **not** by themselv
 
 ## 3. Event-driven orchestration loop
 
-1. Read the latest task tracker, select high-priority tasks with satisfied dependencies, and assign up to two engineers strictly non-overlapping modules/files. If this is impossible, serialize the tasks or explicitly assign file ownership first.
-2. Have each engineer use a separate worktree and `feat/task-<id>` branch, apply applicable test-driven development practices, and add necessary, accurate English code comments.
+1. Read the current dependency graph/critical path and select highest-priority ready tasks with independent file ownership. Lead explicitly chooses this round's 0–5 Engineers; active work is limited by actual agent slots, **no more than five active unmerged task branches**, and Reviewer throughput. Move additional ready work to `QUEUED` with a reason and priority; reconsider when capacity becomes available. Never spawn a sixth Engineer.
+2. Send the standard dispatch contract (below) first. Have each Engineer use a separate worktree and `feat/task-<id>` branch, apply applicable TDD and repository conventions, and add necessary, accurate English code comments. Assign a single writer for any shared file/interface or serialize otherwise.
 3. After implementation and self-testing, require a commit/push and a report containing the diff summary, branch, SHA, exact commands, exit codes, test counts, and that agent's and subtask's actual start/end/elapsed times; move the task to `IN_REVIEW`.
-4. Have the reviewer use an isolated checkout of that exact SHA and run the applicable gates. Test-generated temporary outputs are allowed, but the reviewer must not edit reviewed product code. Accept only an evidence-backed `APPROVED`, `REJECTED` or `BLOCKED` verdict.
+4. Reviewer checks out the exact SHA in isolation, **first tests specification/acceptance compliance, then independently reviews code quality, runs verification commands and applicable UI/UX acceptance**. Test-generated temporary outputs are allowed, but no product-code edits. Do not trust Engineers' claimed greens or screenshots; accept only evidence-backed `APPROVED`, `REJECTED` or `BLOCKED`. Lead may request spec corrections before the full quality review but cannot skip independent execution.
 5. Dispatch any fix, perform authorized merges and post-merge tests, update task state, then select the next ready task.
 
-React to agent completion events first, with periodic remote/task reconciliation as a safety net. **Do not run a permanently polling subagent.** Engineers may become available after pushing a task, but by default allow no more than two active, unmerged task branches across the project. Clear review/integration backlogs before expanding concurrent work.
+React to Agent completion events first; periodically reconcile remote/task state as a safety net. **Do not run a permanently polling subagent.** A task in `IN_PROGRESS/IN_REVIEW/REJECTED/APPROVED` occupies one active unmerged branch slot until integration; the project has a **hard cap of five active unmerged task branches**. An idle Engineer does not automatically free branch capacity. Prioritize clearing review/integration backlog before dispatching more `QUEUED` work. Use task-specific direct messages; broadcast only shared-interface changes, cross-team blockers and milestones.
+
+### Mandatory dispatch contract, dependency and resumption ledger
+
+Before assigning work, send a concise executable brief with these fields. Do not send the entire PRD indiscriminately or presume that an Agent remembers a past chat:
+
+```text
+Task ID / priority / dependencies / owner / branch
+Goal and observable deliverable / requirements reference
+Exclusive editable files and modules / shared files' single writer
+Interface/API contract and integration assumptions
+Acceptance: exact commands, expected result, platform, UI_SCOPE, UI/UX matrix
+Out of scope / do-not-change / required evidence
+Handoff: commit SHA, test exit codes/counts, findings, timestamps
+```
+
+Lead keeps the dependency DAG, critical path, file ownership table, `TODO → QUEUED → IN_PROGRESS → IN_REVIEW → APPROVED → DONE` transitions (including `REJECTED`/`BLOCKED` detours), queue priorities and reasons, reviewed SHAs, unmerged branch inventory, decisions/blockers, and exact next action for resumption in canonical `TASKS.md` or its equivalent. Dependency-unready tasks remain `TODO`. Give a shared interface/file exactly one Engineer owner or serialize instead of betting on two writable worktrees merging cleanly.
+
+Lead may route tasks to supported models according to complexity, cost and runtime capability, **only using models and parameters actually advertised by the current tools**. Do not copy another platform's proprietary TeamCreate/TeamDelete commands, evade existing permissions or make paid CI/GitHub Actions a new mandatory substitute for independently executed local tests.
 
 ## 4. Independent deterministic quality gates
 
-Define mandatory acceptance commands **before dispatch**, then apply the relevant checks for the repository and target platforms: type checking, lint/static analysis, unit tests, integration/regression tests, full build, and necessary GUI/CLI/E2E or platform-specific checks.
+Define mandatory commands, platforms and UI/UX scenarios **before dispatch**, then run the relevant checks: type checking, lint/static analysis, unit tests, integration/regression tests, full build, and applicable GUI/CLI/E2E, accessibility or platform-specific tests. **For every UI/interaction/layout/accessibility/localization change or release, first read and enforce the complete [independent UI/UX acceptance contract](ui-ux-acceptance.md).**
 
 - The reviewer must **run tools independently**, recording exact commands, environment, SHA, exit codes and passed/failed/skipped counts.
 - Any failing required check (nonzero exit code) produces `REJECTED`. If a mandatory check cannot execute because of permissions or environment, use `BLOCKED`, never “all green.”
-- Only after the mechanical gates pass, review functional logic, architecture, edge cases, requirement coverage and regression risk.
+- Conduct two independent review passes: **specification/acceptance compliance** and **implementation quality** (logic, architecture, edge cases, regressions and applicable UI/UX). Neither pass can be replaced by an Engineer's self-report.
 - Check that tests, assertions, fixtures or skips were not weakened to produce false passes.
 - Never retroactively relax acceptance criteria, fabricate results or count skipped checks as passed.
-- Mark unavailable platform tests as `NOT RUN` with risk stated explicitly; Linux-only checks cannot establish Windows/iOS device verification.
+- For `UI_SCOPE=FULL`, Reviewer actually exercises critical journeys on target platforms, inspecting layout/DPI/text scaling, interactions, required keyboard/touch input, accessibility, themes, long localizations and error states. Publish an independent UI/UX report with per-dimension scores plus screenshots, video or automation logs. **Merge requires ≥85/100; release requires ≥90/100; neither permits P0/P1 blocking defects.** A score cannot erase a failed hard gate. `SMOKE` gets independent UI smoke, and `NA` requires rationale with score `NOT APPLICABLE`. Read the [UI/UX contract](ui-ux-acceptance.md) for evidence matrix and weights.
+- Mark unavailable **mandatory** target-platform checks `NOT RUN` plus risk and verdict `BLOCKED`; Linux-only tests cannot establish Windows/iOS native acceptance. A proven failed required check yields `REJECTED` rather than being hidden by other passes.
 
-The review report must include review start/end times and elapsed duration, task ID, SHA, verdict, failing commands/tests and exit codes, reproduction steps, affected files, severity, expected outcome, environment, untested areas and proposed remediation. The reviewer does not edit product files.
+Use finding severity `P0 Critical / P1 High / P2 Medium / P3 Low`; `P0/P1` block approval. Reports include review start/end/elapsed, task ID and exact SHA, spec-compliance verdict, independent commands/exit codes/counts, reproduction, affected files, severity, expected vs actual, environment, untested areas and remediation. For `FULL` UI changes add platform evidence matrix, five weighted dimensions and total score, merge/release verdicts. Reviewer submits evidence to Lead; **Lead persists `reviews/<task-id>-ui-ux.md` or its existing equivalent and links it from canonical `TASKS.md`** so reviewers never race the tracker. Reviewer never edits product files.
 
 ## 5. Rejection, rework and blockers
 
@@ -79,7 +99,7 @@ The review report must include review start/end times and elapsed duration, task
 ## 6. Git branch lifecycle
 
 - Follow the repository's existing default, integration and release branch policy. Use `dev` for integration if it already exists; **do not create a new `dev` or alter release conventions without authorization**.
-- Use one short-lived `feat/task-<id>` branch per task; reuse it for all rework. Give each engineer a separate worktree.
+- Use one short-lived `feat/task-<id>` branch per task; reuse it for all rework. Give **each Engineer a separate worktree, with no more than five active unmerged task branches**.
 - Commit and push after successful self-tests. Review an immutable SHA, and do not merge unapproved work.
 - The Lead merges `APPROVED` changes only within granted authority. **Immediately before merging, verify that the branch HEAD still matches the reviewer-approved SHA**; if new commits exist, re-review the new SHA. Rerun every required target-branch check after integration; only then mark `DONE`.
 - **Before deleting a temporary local/remote branch**, confirm the change has landed in the target branch, its required tests pass and the source branch has no unique unmerged commits. Before removing its worktree, also inspect staged, unstaged, untracked and ignored files; preserve and report any unique data, never force-delete it.
@@ -88,8 +108,8 @@ The review report must include review start/end times and elapsed duration, task
 
 ## 7. Completion and reporting
 
-Declare the scoped work complete only if every task is `DONE`, no `REJECTED/BLOCKED` task remains, changes are pushed and merged as authorized, all mandatory integration checks pass, and the reviewer provides a final verdict. Otherwise report blockers and retain restartable project state.
+Declare the scoped work complete only if every task is `DONE`, none remain `TODO/QUEUED/IN_PROGRESS/IN_REVIEW/REJECTED/BLOCKED`, changes are pushed and merged as authorized, mandatory integration and applicable UI/UX merge/release gates pass, and Reviewer provides a final verdict. Otherwise report blockers and retain restartable project state.
 
-Keep interim status updates short. The final Lead report must include round start/end timestamps and duration, first-ever task start and overall elapsed time, per-agent and completed-subtask timings, total/completed/remaining/blocked tasks, features and fixes, exact test commands and results, branches and commit SHAs, merge/cleanup status, independent review conclusions, remaining risks and user acceptance steps.
+Keep interim status updates short. The final Lead report must include round start/end timestamps and duration, first-ever task start and overall elapsed time, per-agent and completed-subtask timings, total/completed/`QUEUED`/blocked tasks, selected Engineer headcount and active branch count, critical path and blocker decisions, features and fixes, independently executed commands/results, UI/UX matrix/score/blockers, branches and commit SHAs, merge/cleanup status, independent review conclusions, remaining risks and user acceptance steps.
 
-**Common failures to prevent:** trusting an engineer's “tests passed” claim instead of independent verification; sharing one writable worktree; holding state only in chat; deleting unmerged branches; reporting missing tools as PASS; or allowing reviewer-to-engineer dispatch outside the Lead. Stop the affected transition and correct it.
+**Common failures to prevent:** still fixing the team at two Engineers, treating five as a quota, dispatching a sixth without queuing, letting multiple Engineers write the same shared file, reviewing screenshots without actual UI execution, using an 85 score to excuse a P1 defect, marking unavailable Windows/iOS checks PASS, retaining state only in chat, deleting unmerged branches, or allowing Reviewer-to-Engineer dispatch. Stop the affected transition and correct it.
