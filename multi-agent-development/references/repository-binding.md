@@ -72,33 +72,117 @@ Save the visible CHAT START text and **terminal final** text from the actual con
 CHAT_START_FILE=/path/to/chat-start.txt TERMINAL_FINAL_FILE=/path/to/terminal-final.txt python3 - <<'PY'
 import os
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 start = Path(os.environ["CHAT_START_FILE"]).read_text(encoding="utf-8")
 final = Path(os.environ["TERMINAL_FINAL_FILE"]).read_text(encoding="utf-8")
-assert "[START] role=Lead" in start, "visible Lead START missing"
-assert "dispatch matrix" in start.lower() or "派工矩阵" in start, "visible dispatch matrix missing"
-headcount = re.search(r"selected_engineers=([0-5])(?![0-9])", start)
-assert headcount, "dynamic 0–5 count missing or outside cap"
-selected = int(headcount.group(1))
-assert "reason=" in start.lower() or "理由=" in start, "selection reason missing"
-assert "| Task | Status | Reason | Owner" in start, "readiness/status/reason columns missing"
-assert re.search(r"(?m)^\|[^\n]*(READY|QUEUED|BLOCKED|NO_READY)[^\n]*\|", start), "no visible task decision row"
-for line in start.splitlines():
+
+def required_reason(value):
+    return isinstance(value, str) and value.strip() not in ("", "-", "...", "N/A", "NOT MEASURED")
+
+def field(name):
+    matches = re.findall(r"(?:^|\s)" + re.escape(name) + r"=([^\s]+)", final, re.M)
+    assert len(matches) == 1, "missing/duplicate " + name
+    return matches[0]
+
+lead_starts = re.findall(r"(?m)^\[START\] role=Lead time=(.+?) zone=([^\s]+)\s*$", start)
+assert len(lead_starts) == 1, "visible Lead START with real time/zone required"
+start_time, start_zone = lead_starts[0]
+final_zone = re.findall(r"(?m)^zone=([^\s]+) ([+-][0-9]{2}:[0-9]{2})\s*$", final)
+assert len(final_zone) == 1 and final_zone[0][0] == start_zone, "START/FINAL effective zone mismatch"
+zone_name, zone_offset = final_zone[0]
+zone = ZoneInfo(zone_name)
+
+def timestamp(value):
+    assert re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})? ?[+-][0-9]{2}:[0-9]{2}", value), "timestamp format"
+    instant = datetime.fromisoformat(value)
+    assert instant.utcoffset() == instant.astimezone(zone).utcoffset(), "timestamp zone offset mismatch"
+    assert instant.strftime("%z") == zone_offset.replace(":", ""), "timestamp offset differs from round zone"
+    return instant
+
+def duration(value):
+    match = re.fullmatch(r"([0-9]+):([0-5][0-9]):([0-5][0-9])(?:\.([0-9]{1,3}))?", value)
+    assert match, "invalid nonempty elapsed duration"
+    return timedelta(hours=int(match[1]), minutes=int(match[2]),
+                     seconds=int(match[3]), milliseconds=int((match[4] or "0").ljust(3, "0")))
+
+def timed_pair(begin, end, elapsed):
+    b, e = timestamp(begin), timestamp(end)
+    assert e >= b and abs(((e - b) - duration(elapsed)).total_seconds()) < 1, "invalid start/end/elapsed"
+    return b, e
+
+lead_start = timestamp(start_time)
+assert "dispatch matrix" in start.lower() or "派工矩阵" in start, "CHAT START dispatch matrix missing"
+selection = re.findall(r"selected_engineers=([^;\s]+)", start)
+assert len(selection) == 1 and re.fullmatch(r"[0-5]", selection[0]), "selected_engineers must be one integer 0–5"
+selected = int(selection[0])
+why = re.findall(r"selected_engineers=[^\n]*?reason=([^\n]+)", start)
+assert len(why) == 1 and required_reason(why[0]), "dynamic headcount selection reason missing"
+header = "| Task | Status | Reason | Owner | Branch | Agent start |"
+assert header in start, "CHAT START readiness matrix columns missing"
+decision_rows = []
+for line in start.splitlines()[start.splitlines().index(header) + 1:]:
     if not line.startswith("|"):
+        break
+    if re.fullmatch(r"\|[-| ]+\|", line):
         continue
     cells = [cell.strip() for cell in line.strip("|").split("|")]
-    if len(cells) >= 3 and cells[1] in ("READY", "QUEUED", "BLOCKED", "NO_READY"):
-        assert cells[2] not in ("", "-", "N/A", "..."), "task decision missing concrete reason"
-assert re.search(r"(?m)^\| Role \| Task/state \| Start", final), "terminal final role table missing"
-for role in ("Lead", "Engineer", "Reviewer"):
-    assert re.search(r"(?m)^\| " + role + r"\b", final), "terminal final omits " + role
-engineer_rows = set(re.findall(r"(?m)^\| Engineer ([0-9]+) \|", final))
-assert engineer_rows == {str(i) for i in range(1, selected + 1)}, "terminal final omits an actual Engineer"
-assert ("| Engineer (none) |" in final) == (selected == 0), "zero-Engineer slot inconsistent with dispatch"
-assert "round_elapsed=" in final and "first_scope_elapsed=" in final, "Lead round/scope elapsed missing"
-assert "zone=" in final and re.search(r"[+-][0-9]{2}:[0-9]{2}", final), "effective zone/offset missing"
-print("VISIBLE-CHAT-CONTRACT PASS (structure only; verify real clock separately)")
+    assert len(cells) == 6, "incomplete task decision row"
+    task, status, reason, owner, branch, agent_start = cells
+    assert status in ("READY", "QUEUED", "BLOCKED", "NO_READY"), "invalid readiness status"
+    assert required_reason(reason), "missing READY/QUEUED/BLOCKED reason"
+    assert task and owner and branch and agent_start, "incomplete task/owner/branch/start"
+    if agent_start != "NOT STARTED":
+        timestamp(agent_start)
+    decision_rows.append(cells)
+assert decision_rows, "no visible task decision row"
+if selected:
+    owners = {row[3] for row in decision_rows if row[1] == "READY"}
+    assert all("Engineer " + str(i) in owners for i in range(1, selected + 1)), "selected Agent missing READY task"
+else:
+    assert not any(row[1] == "READY" and row[3].startswith("Engineer ") for row in decision_rows), "zero Engineers but READY assigned"
+
+table = "| Role | Task/state | Start (zone) | End (zone) | Elapsed | Reason/evidence |"
+lines = final.splitlines()
+assert table in lines, "terminal final timing table missing"
+rows = {}
+for line in lines[lines.index(table) + 1:]:
+    if not line.startswith("|"):
+        break
+    if re.fullmatch(r"\|[-| ]+\|", line):
+        continue
+    cells = [cell.strip() for cell in line.strip("|").split("|")]
+    assert len(cells) == 6 and cells[0] not in rows, "incomplete/duplicate role row"
+    rows[cells[0]] = cells
+expected = {"Lead", "Reviewer"} | ({"Engineer " + str(i) for i in range(1, selected + 1)}
+                                  if selected else {"Engineer (none)"})
+assert set(rows) == expected, "terminal final must show exactly every real Agent and pending role"
+for role, cells in rows.items():
+    _, task, begin, end, elapsed, reason = cells
+    assert required_reason(task) and required_reason(reason), "missing task/state or evidence/reason"
+    assert begin and end and elapsed, "blank start/end/elapsed is never valid"
+    if role.startswith("Engineer ") and role != "Engineer (none)":
+        assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]* (READY|IN_PROGRESS|IN_REVIEW|APPROVED|REJECTED|BLOCKED|DONE)", task), "Engineer task ID/status required"
+    if begin == end == elapsed == "NOT STARTED":
+        assert role != "Lead" and task == "NOT STARTED", "unstarted role must be explicit"
+    elif "NOT MEASURED" in (begin, end, elapsed):
+        assert elapsed == "NOT MEASURED" and "NOT STARTED" not in (begin, end), "unknown timing must be labeled"
+        for value in (begin, end):
+            if value != "NOT MEASURED":
+                timestamp(value)
+    else:
+        timed_pair(begin, end, elapsed)
+
+round_start, round_end = timed_pair(field("round_start"), field("round_end"), field("round_elapsed"))
+scope_start, scope_end = timed_pair(field("first_scope_start"), field("first_scope_end"),
+                                    field("first_scope_elapsed"))
+assert round_start == lead_start and round_end == scope_end and scope_start <= round_start, "Lead round/scope clocks do not align"
+lead = rows["Lead"]
+assert timestamp(lead[2]) == round_start and timestamp(lead[3]) == round_end
+assert abs((duration(lead[4]) - duration(field("round_elapsed"))).total_seconds()) < 1, "Lead row round elapsed differs"
+print("VISIBLE-CHAT-CONTRACT PASS (structure and time arithmetic; verify clock provenance separately)")
 PY
 ```
 
