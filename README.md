@@ -10,7 +10,7 @@ CodeBuddy Skills 集合 · A collection of CodeBuddy skills.
 |---|---|---|
 | [dotnet-desktop-delivery](dotnet-desktop-delivery/) | 中文 / English | .NET 桌面应用交付实践：双脚本、Inno Setup + MSIX 打包、测试分层与本地化；[中文](dotnet-desktop-delivery/references/workflow.zh-CN.md) / [English](dotnet-desktop-delivery/references/workflow.en.md) |
 | [git-proxy](git-proxy/) | 简体中文 | git 网络操作前的连通性探测：先测直连，不通则依次尝试 v2rayN / Clash 本地代理，用真正能通的代理（附带只读探测脚本，不改动 git 配置） |
-| [multi-agent-development](multi-agent-development/) | 中文 / English | AI 多 Agent 自主开发：Lead 统筹、双工程师、独立审查、任务持久化与安全合并；[中文](multi-agent-development/references/workflow.zh-CN.md) / [English](multi-agent-development/references/workflow.en.md) |
+| [multi-agent-development](multi-agent-development/) | 中文 / English | AI 多 Agent 自主开发：Lead 统筹、动态 0–5 名工程师、独立审查、任务持久化与安全合并；[中文](multi-agent-development/references/workflow.zh-CN.md) / [English](multi-agent-development/references/workflow.en.md) |
 
 ## 安装 / Install
 
