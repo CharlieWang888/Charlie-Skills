@@ -83,9 +83,12 @@ def required_reason(value):
     return isinstance(value, str) and value.strip() not in ("", "-", "...", "N/A", "NOT MEASURED")
 
 def field(name):
-    matches = re.findall(r"(?:^|\s)" + re.escape(name) + r"=([^\s]+)", final, re.M)
+    # Values can contain spaces ("YYYY-MM-DD HH:MM:SS +08:00", "NOT MEASURED", reasons).
+    # Stop only at the next key= field on this line or the line boundary.
+    matches = re.findall(r"(?:^|[ \t])" + re.escape(name) +
+                         r"=(.*?)(?=[ \t]+[A-Za-z_][A-Za-z_0-9]*=|\r?$)", final, re.M)
     assert len(matches) == 1, "missing/duplicate " + name
-    return matches[0]
+    return matches[0].strip()
 
 lead_starts = re.findall(r"(?m)^\[START\] role=Lead time=(.+?) zone=([^\s]+)\s*$", start)
 assert len(lead_starts) == 1, "visible Lead START with real time/zone required"
@@ -176,9 +179,17 @@ for role, cells in rows.items():
         timed_pair(begin, end, elapsed)
 
 round_start, round_end = timed_pair(field("round_start"), field("round_end"), field("round_elapsed"))
-scope_start, scope_end = timed_pair(field("first_scope_start"), field("first_scope_end"),
-                                    field("first_scope_elapsed"))
-assert round_start == lead_start and round_end == scope_end and scope_start <= round_start, "Lead round/scope clocks do not align"
+scope_begin, scope_finish, scope_elapsed = (field("first_scope_start"),
+                                           field("first_scope_end"), field("first_scope_elapsed"))
+if scope_begin == "NOT MEASURED":
+    assert scope_elapsed == "NOT MEASURED", "unknown historical start requires unknown total elapsed"
+    assert required_reason(field("first_scope_reason")), "unknown historical start requires a real reason"
+    scope_end = timestamp(scope_finish)
+    assert scope_end == round_end, "scope end must be actual current round end"
+else:
+    scope_start, scope_end = timed_pair(scope_begin, scope_finish, scope_elapsed)
+    assert scope_start <= round_start, "historical first scope start after current round"
+assert round_start == lead_start and round_end == scope_end, "Lead round/scope clocks do not align"
 lead = rows["Lead"]
 assert timestamp(lead[2]) == round_start and timestamp(lead[3]) == round_end
 assert abs((duration(lead[4]) - duration(field("round_elapsed"))).total_seconds()) < 1, "Lead row round elapsed differs"
