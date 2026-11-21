@@ -1,4 +1,4 @@
-# AI 多 Agent 自主软件开发工作流（V2.2）
+# AI 多 Agent 自主软件开发工作流（V2.3）
 
 **核心原则：Lead 根据任务和资源动态决定工程师人数，硬上限 5 名；超额任务进入 `QUEUED`；1 名独立审查员完成代码、测试和适用的 UI/UX 验收。任务状态可续接，证据真实，安全合并。**
 
@@ -32,6 +32,16 @@
 - **总任务计时：** 首次启动时间以仓库有效时区记录到 `TASKS.md` 或现有任务台账；多轮续接不得重置。对历史其他合法偏移的首次启动时间，**保留原始瞬时点/出处，按需增加仓库时区的展示值，不得改变任务起点**。最终完成时以该时区展示首次开始、最终结束、总体墙钟历时；暂停与等待包含在内。另计活跃执行时间须单独标示，**不能把并行 Agent 的耗时相加当作总体历时**。
 - **真实性：** 以实际可用系统时钟获取瞬时点、换算为仓库有效时区；跨时区历时用同一绝对时间轴相减，连续执行段尽量用单调时钟。不可准确取得的时间标 `NOT MEASURED` 及原因，不得倒填、伪造、仅改偏移标签，或声称对话结束后仍后台计时。格式以 [统一模板](repository-binding.md) 为准。
 
+### 聊天 START 派工矩阵与 terminal final 逐角色耗时（V2.3 硬门禁）
+
+**必须让用户在聊天主回复直接看见计时。** 仅把时间写进 `TASKS.md`、链接、工具日志或可能折叠的 commentary，不能替代最终可见答复。
+
+1. **CHAT START dispatch matrix / 聊天 START 派工矩阵：** Lead 先在聊天显示自己实际测量的 `[START]`、`selected_engineers=N`（动态整数 0–5）及选择 N 的理由；再给可见表格：`Task | Status | Reason | Owner | Branch | Agent start`。逐任务显示 `READY / QUEUED / BLOCKED` 或 `NO_READY`，每行给真实依赖、文件所有权、Agent 槽位、审查容量或权限等具体理由。真实可独立执行任务不足时可选择 N=0，标明 `NOT STARTED`，绝不为了展示并行而派满五名或虚构 Agent。
+2. **实际交接计时：** 每名 Engineer 和 Reviewer 各自在工作真正开始/结束时测量本人的 `[START]`/`[END]`，包含所在 `zone=`、UTC 偏移、任务、真实 elapsed。Lead 收到后在聊天向用户可见地转述，不能拿 Lead 的时间替代 Agent 时间。每项可测子任务也报真实起止/耗时，未测写 `NOT MEASURED` 和原因。
+3. **VISIBLE TERMINAL FINAL / 每轮 terminal final 必填：** Lead 在**每轮最终答复**（包括暂停、阻塞、未完成轮次）给完整 `Role | Task/state | Start (zone) | End (zone) | Elapsed | Reason/evidence` 逐角色表：Lead、每个真实派发的 Engineer、Reviewer。未派 Engineer 写 `Engineer (none): NOT STARTED` 和原因；待审 Reviewer 写 `NOT STARTED`，未知真实时间写 `NOT MEASURED` 并解释。表下分别列出 `round_elapsed=`（本轮 Lead 起点→本轮终点）及 `first_scope_elapsed=`（首次范围起点→当前终点，包含轮间等待），并列真实起止时间及生效 IANA 时区。不得把并行 Agent 耗时相加当总历时。
+
+此要求与 [repository-binding.md 的完整格式和可执行聊天断言](repository-binding.md)一致。用户无需打开台账即可看到每位角色进展与耗时；中途 partial final 和 commentary 不能替代末尾 terminal final。
+
 ### 状态机
 
 | 状态 | 进入条件 |
@@ -49,7 +59,7 @@
 
 ## 3. Lead 的事件驱动循环
 
-1. 从最新 `TASKS.md` 绘制依赖关系和关键路径，挑选依赖已满足且文件独立的最高优先级任务。Lead 明确决定本轮需要几名 Engineer（0–5），实际并行受运行时槽位、**最多 5 条活跃未合并任务分支**及 Reviewer 容量限制。多出的可执行任务置为 `QUEUED`，记录入队原因和优先级，释放容量后重新评估。任何人都不得擅自新增第 6 名 Engineer。
+1. 从最新 `TASKS.md` 绘制依赖关系和关键路径，挑选依赖已满足且文件独立的最高优先级任务。Lead 明确决定本轮需要几名 Engineer（0–5），在 **聊天 START 派工矩阵** 可见地说明 `selected_engineers` 和依据；实际并行受运行时槽位、**最多 5 条活跃未合并任务分支**及 Reviewer 容量限制。多出的可执行任务置为 `QUEUED`，在台账**和聊天**记录入队原因和优先级，释放容量后重新评估。任何人都不得擅自新增第 6 名 Engineer。
 2. Lead 先发送标准派单契约（下一节），再令每位工程师使用独立 Worktree 和 `feat/task-<id>` 分支；遵循适用的 TDD 与仓库约定，保留必要且准确的英文代码注释。共享文件指定唯一写入负责人、先确定接口，无法隔离时串行执行。
 3. 工程师自测通过后提交、推送，报告变更摘要、分支、SHA、命令、退出码、测试计数，以及该 Agent 和小任务的开始/结束时间与耗时；Lead 将任务置为 `IN_REVIEW`。
 4. 审查员在独立工作区检出固定 SHA，**第一轮核对需求/验收契约，第二轮检查代码质量、独立执行测试和适用的 UI/UX 验收**；允许测试生成临时产物，不得改受审业务代码。不采信工程师口头“全绿”或截图；只输出带证据的 `APPROVED`、`REJECTED` 或 `BLOCKED`。Lead 可先要求修正规格偏差，再启动完整质量复核，但不可跳过独立实测。
@@ -111,6 +121,6 @@ Lead 在 `TASKS.md` 或现有等价文件维护：`TODO → QUEUED → IN_PROGRE
 
 仅当本轮范围所有任务均为 `DONE`、无遗留 `TODO/QUEUED/IN_PROGRESS/IN_REVIEW/REJECTED/BLOCKED`、所有代码已推送并按授权合并、集成分支必需测试全通过、适用的 UI/UX 合并/发布门禁通过且审查员提供最终结论时，才宣布完成并让 Agent 休息。遇到阻塞则说明未完成原因，保留可续接状态。
 
-Lead 每轮阶段性汇报保持简洁，最终报告至少包含：按仓库有效时区（默认 `Asia/Tokyo` +09:00）输出的本轮启动/结束时间及耗时、首次任务启动时间及总体历时、各 Agent 和已完成小任务耗时、总/完成/`QUEUED`/阻塞任务数、Lead 确认的 Engineer 人数与并发分支数、关键路径和阻塞决策、功能与 Bug 修复、独立测试命令及结果、UI/UX 矩阵/得分/阻断项、Git 分支与 SHA、合并及清理情况、审查结论、剩余风险和用户需要验收的内容。
+Lead 每轮阶段性汇报保持简洁，但 **terminal final 必须包含完整逐角色耗时表**（Lead、每位实际 Engineer、Reviewer；缺失/未开始行明确 `NOT MEASURED`/`NOT STARTED` 及理由），以及分开的 `round_elapsed=`、`first_scope_elapsed=`，不能只链接 `TASKS.md` 或依赖折叠 commentary。最终报告还必须包含：按仓库有效时区（默认 `Asia/Tokyo` +09:00）输出的本轮启动/结束时间及耗时、首次任务启动时间及总体历时、已完成子任务耗时、总/完成/`QUEUED`/`BLOCKED` 数量及具体原因、Lead 确认的动态 Engineer 人数与并发分支数、关键路径和阻塞决策、功能与 Bug 修复、独立测试命令及结果、UI/UX 矩阵/得分/阻断项、Git 分支与 SHA、合并及清理情况、审查结论、剩余风险和用户需要验收的内容。
 
 **常见错误：**仍固定两名 Engineer，或把上限 5 当作必须派满；超过 5 不入队就擅派第 6 人；共享文件多人并改；Reviewer 不实测界面只看美观截图；用 85 分掩盖 P1；把缺失的 Windows/iOS 验收记为 PASS；任务状态只放聊天；在未合并前删分支；审核失败后跳过 Lead 私自派单。出现任一问题即停止相应状态推进并纠正。

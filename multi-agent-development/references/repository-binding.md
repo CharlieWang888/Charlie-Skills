@@ -1,4 +1,4 @@
-# Required AGENTS.md repository binding / 仓库强绑定规则（V2.2）
+# Required AGENTS.md repository binding / 仓库强绑定规则（V2.3）
 
 This file is normative for every invocation of the `multi-agent-development` skill. 本文件是该 Skill 每次启用时必须执行的约束，不是可选建议。
 
@@ -25,6 +25,7 @@ The lines between the two markers below (inclusive) are the managed block. Prese
 - **Start clock / 启动计时：** At every session or resumed round, Lead immediately captures the real start instant, identifies the effective repository timezone from `AGENTS.md`, prints its converted timestamp and starts the round timer. Each Engineer and Reviewer logs its own real start instant converted to the same zone when taking an assignment.
 - **End clock / 结束计时：** At every completed, paused or blocked round, Lead must report the real end instant **in the effective repository timezone**, round elapsed (`HH:MM:SS`) and overall project/task elapsed from first start. Each Engineer/Reviewer and measurable subtask reports start/end in that same zone with its actual elapsed duration. 不得漏掉耗时、伪造时间或在仓库内混用时区。
 - **Persist timing / 持久化时间：** In `TASKS.md` or its canonical equivalent, save **all newly recorded timestamps in the effective repository timezone**: scope original start, round start/end, Agent/subtask start/end and final completion; record elapsed durations separately. For legacy first starts in another explicit zone, keep the original instant/provenance and optionally add a converted display value; never reset or shift the real scope start. Distinguish wall-clock overall vs measured active time; never sum overlapping Agent durations. Missing measurements use `NOT MEASURED` plus reason.
+- **Visible chat timing / 聊天可见计时：** At every Lead `[START]`, print a user-visible **CHAT START dispatch matrix / 聊天 START 派工矩阵** with dynamic `selected_engineers=N` (0–5) and the capacity/ownership reason, plus each actionable task's `READY / QUEUED / BLOCKED` status and concrete reason. Relays of actual Agent `[START]`/`[END]` happen at measured instants. Every round's **terminal final** must contain the full Lead/Engineer/Reviewer per-role timing table (or `NOT STARTED`/`NOT MEASURED` with reason) and both Lead `round_elapsed` and `first_scope_elapsed`. The user must not need to open `TASKS.md` or expand commentary to read times. This visible output is additional to durable tracker writes and never authorizes invented agent work. 每轮必须在用户可见最终答复里列出真实逐角色耗时，不能只记录在 TASKS 或折叠消息。
 - **Evidence / 真实性：** Derive real instants from an available clock, convert to the effective repository timezone with timezone-aware conversion, and calculate elapsed from actual instants (prefer a monotonic clock for continuous work). Another host zone's wall time cannot be copied verbatim into the selected timezone. Report interruptions, pauses and missing values; never infer successful completion or background execution.
 <!-- multi-agent-development:binding:end -->
 
@@ -37,6 +38,69 @@ At each Engineer, Reviewer or completed subtask handoff, show `[END] role=Engine
 At every Lead stop or handoff, show `[END] role=Lead time=YYYY-MM-DD HH:MM:SS <offset> zone=<IANA-zone> round_elapsed=HH:MM:SS overall_elapsed=...`; include the first-start and last-finish instants in the repository zone and full elapsed duration when the scope finishes. `overall_elapsed` is wall-clock time since the first recorded start (including waits and between-session gaps); measured active time, if available, must be a separate number, not a sum of overlapping agents' hours. Paused work remains `IN_PROGRESS` or `BLOCKED`; do not mislabel it `DONE`.
 
 If a session ends unexpectedly and an end timestamp cannot be observed, leave it unknown rather than fabricating it; the next Lead records the restart time and states the measurement gap.
+
+## V2.3 user-visible CHAT START and terminal final slots / 用户可见回报格式
+
+At **CHAT START**, print the observed Lead start first, then a compact **dispatch matrix / 派工矩阵** in visible chat. A sample shape (replace placeholders with actual state, never fictional times):
+
+```text
+[START] role=Lead time=<observed zoned instant>
+selected_engineers=N (0–5); reason=<READY independent tasks / real agent slots / ownership / Reviewer throughput>
+| Task | Status | Reason | Owner | Branch | Agent start |
+| ...  | READY / QUEUED / BLOCKED / NO_READY | concrete reason | Engineer 1 / unassigned | ... | observed / NOT STARTED |
+```
+
+N=0 is a legitimate decision: display `NO_READY` or the capacity blocker and its reason, with no invented Engineer. At each real Agent handoff, show that Agent's measured `[START]`, `[END]` and elapsed in the same zone, including Reviewer; never substitute a Lead clock for an Agent's.
+
+At **every terminal final**, even when paused or blocked, print a **complete per-role timing table** with these literal headings:
+
+| Role | Task/state | Start (zone) | End (zone) | Elapsed | Reason/evidence |
+|---|---|---|---|---|---|
+| Lead | current round | observed time | observed time | measured duration | state transition |
+| Engineer 1…N | each dispatched task | own observed time | own observed time / `NOT MEASURED` | measured / `NOT MEASURED` | exact task and missing-measurement reason |
+| Reviewer | review state / `NOT STARTED` | own time / `NOT STARTED` | observed / `NOT MEASURED` | measured / `NOT MEASURED` | verdict or why pending |
+
+With N=0, include `Engineer (none)` with `NOT STARTED` and its READY/capacity reason. Include Reviewer even if review is pending; never label an unstarted review complete. Beneath the table, provide **both** `round_elapsed=<measured duration>` (current Lead round start→end) and `first_scope_elapsed=<measured wall-clock duration>` (original first scope start→current end, including waits). Show the corresponding actual start/end instants and effective `zone=<IANA-zone>` with UTC offset. Do not add Agent durations to derive wall-clock elapsed. An unknown historical start is `NOT MEASURED` with a reason, not reset to the current round.
+
+**Terminal final is a hard visibility gate.** `TASKS.md`, a Markdown link, tool log, commentary or a partial final can duplicate timing but **cannot replace** the full role table in the last user-visible final answer.
+
+### Executable actual-chat acceptance gate / 可执行聊天断言
+
+Save the visible CHAT START text and **terminal final** text from the actual conversation as separate UTF-8 files and run this gate. It rejects the known V2.2 failure shape (timing appears only in TASKS/commentary). It checks structure, not whether asserted timestamps actually came from the clock; verify the latter separately:
+
+```sh
+CHAT_START_FILE=/path/to/chat-start.txt TERMINAL_FINAL_FILE=/path/to/terminal-final.txt python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+
+start = Path(os.environ["CHAT_START_FILE"]).read_text(encoding="utf-8")
+final = Path(os.environ["TERMINAL_FINAL_FILE"]).read_text(encoding="utf-8")
+assert "[START] role=Lead" in start, "visible Lead START missing"
+assert "dispatch matrix" in start.lower() or "派工矩阵" in start, "visible dispatch matrix missing"
+headcount = re.search(r"selected_engineers=([0-5])(?![0-9])", start)
+assert headcount, "dynamic 0–5 count missing or outside cap"
+selected = int(headcount.group(1))
+assert "reason=" in start.lower() or "理由=" in start, "selection reason missing"
+assert "| Task | Status | Reason | Owner" in start, "readiness/status/reason columns missing"
+assert re.search(r"(?m)^\|[^\n]*(READY|QUEUED|BLOCKED|NO_READY)[^\n]*\|", start), "no visible task decision row"
+for line in start.splitlines():
+    if not line.startswith("|"):
+        continue
+    cells = [cell.strip() for cell in line.strip("|").split("|")]
+    if len(cells) >= 3 and cells[1] in ("READY", "QUEUED", "BLOCKED", "NO_READY"):
+        assert cells[2] not in ("", "-", "N/A", "..."), "task decision missing concrete reason"
+assert re.search(r"(?m)^\| Role \| Task/state \| Start", final), "terminal final role table missing"
+for role in ("Lead", "Engineer", "Reviewer"):
+    assert re.search(r"(?m)^\| " + role + r"\b", final), "terminal final omits " + role
+engineer_rows = set(re.findall(r"(?m)^\| Engineer ([0-9]+) \|", final))
+assert engineer_rows == {str(i) for i in range(1, selected + 1)}, "terminal final omits an actual Engineer"
+assert ("| Engineer (none) |" in final) == (selected == 0), "zero-Engineer slot inconsistent with dispatch"
+assert "round_elapsed=" in final and "first_scope_elapsed=" in final, "Lead round/scope elapsed missing"
+assert "zone=" in final and re.search(r"[+-][0-9]{2}:[0-9]{2}", final), "effective zone/offset missing"
+print("VISIBLE-CHAT-CONTRACT PASS (structure only; verify real clock separately)")
+PY
+```
 
 ## Common shortcuts that are not allowed / 禁止的借口
 
@@ -54,3 +118,5 @@ If a session ends unexpectedly and an end timestamp cannot be observed, leave it
 | "The Agent runs on UTC, so log UTC." / 机器是 UTC | Convert real instants to the effective repository timezone; default JST, explicit non-managed project zone wins. / 按仓库时区换算 |
 | "Just change an offset label." / 只改时区标记 | Recalculate the calendar day and clock hour in the selected zone; never relabel an instant. / 必须真实换算 |
 | "Historical first-start used another timezone, reset it." / 历史记录重置 | Preserve original instant/provenance, add a view in the effective repository zone if needed, keep total wall time unchanged. / 保留历史起点 |
+| "Times are already in TASKS or commentary, so omit the table from final." / 已写台账不再显示 | The **terminal final** per-role table and both Lead elapsed durations are mandatory user-visible output. / 终局答复必须显式列出 |
+| "Dispatch five Engineers to look parallel." / 为展示并行而派满 | Choose `selected_engineers=0–5` from real READY independence, ownership and review capacity; show QUEUED/BLOCKED reasons. / 并行人数不作秀 |
